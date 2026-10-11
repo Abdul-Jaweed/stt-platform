@@ -25,3 +25,15 @@ def test_registry_without_keys_registers_only_local_provider(tmp_path):
 
 def test_build_default_registry_returns_provider_registry(tmp_path):
     assert isinstance(build_default_registry(_settings(tmp_path)), ProviderRegistry)
+
+
+def test_registry_registers_deepgram_when_key_set(tmp_path):
+    registry = build_default_registry(
+        _settings(tmp_path, deepgram_api_key="dg-test-key")
+    )
+
+    ids = {info.id for info in registry.all()}
+    assert ids == {"faster-whisper", "deepgram"}
+    assert registry.default_id == "faster-whisper"
+    deepgram = registry.get("deepgram")
+    assert deepgram.is_local is False

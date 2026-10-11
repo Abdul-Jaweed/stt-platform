@@ -32,6 +32,7 @@ class ProviderTranscript(BaseModel):
     model_version: str | None = None
     audio_duration_s: float
     processing_duration_s: float
+    warnings: list[str] = Field(default_factory=list)
     raw: dict | None = None
 
 

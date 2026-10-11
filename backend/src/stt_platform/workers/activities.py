@@ -405,6 +405,7 @@ def _build_result(
         provider=provider_id,
         model=transcript.model,
         model_version=transcript.model_version,
+        warnings=list(transcript.warnings),
     )
 
 

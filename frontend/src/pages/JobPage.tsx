@@ -1,3 +1,8 @@
+import {
+  ArrowClockwise,
+  ArrowsClockwise,
+  XCircle,
+} from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -136,6 +141,7 @@ export default function JobPage({
             disabled={acting}
             onClick={() => void runAction((jid) => api.retry(jid))}
           >
+            <ArrowClockwise size={14} weight="bold" aria-hidden="true" />
             Retry
           </button>
         )}
@@ -145,10 +151,12 @@ export default function JobPage({
             disabled={acting}
             onClick={() => void runAction((jid) => api.cancel(jid))}
           >
+            <XCircle size={14} aria-hidden="true" />
             Cancel
           </button>
         )}
         <button type="button" onClick={refresh}>
+          <ArrowsClockwise size={14} aria-hidden="true" />
           Refresh
         </button>
       </div>

@@ -1,3 +1,4 @@
+import { ArrowsClockwise, Check, Minus } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useApi } from "../api/context";
@@ -10,8 +11,21 @@ interface LoadError {
   message: string;
 }
 
-function yesNo(value: boolean): string {
-  return value ? "yes" : "no";
+/**
+ * Capability cells: an icon for the eye, the word for the reader (and for the
+ * tests) — colour and shape are never the only signal.
+ */
+function Capability({ value }: { value: boolean }) {
+  return (
+    <span className={value ? "cap cap-yes" : "cap cap-no"}>
+      {value ? (
+        <Check size={14} weight="bold" aria-hidden="true" />
+      ) : (
+        <Minus size={14} aria-hidden="true" />
+      )}
+      {value ? "yes" : "no"}
+    </span>
+  );
 }
 
 export default function ProvidersPage() {
@@ -45,6 +59,7 @@ export default function ProvidersPage() {
           <strong>{error.code}</strong> {error.message}
         </p>
         <button type="button" onClick={() => void load()}>
+          <ArrowsClockwise size={14} aria-hidden="true" />
           Retry
         </button>
       </section>
@@ -82,9 +97,15 @@ export default function ProvidersPage() {
               </td>
               <td>{provider.health.status}</td>
               <td>{provider.capabilities.languages.length}</td>
-              <td>{yesNo(provider.capabilities.word_timestamps)}</td>
-              <td>{yesNo(provider.capabilities.diarization)}</td>
-              <td>{yesNo(provider.capabilities.streaming)}</td>
+              <td>
+                  <Capability value={provider.capabilities.word_timestamps} />
+                </td>
+              <td>
+                  <Capability value={provider.capabilities.diarization} />
+                </td>
+              <td>
+                  <Capability value={provider.capabilities.streaming} />
+                </td>
               <td>{provider.capabilities.formats.join(", ")}</td>
               <td>
                 {provider.capabilities.max_duration_s != null

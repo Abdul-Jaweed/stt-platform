@@ -1,7 +1,7 @@
 /**
  * Browser audio recording for the upload page.
  *
- * Wraps `MediaRecorder` with the states the UI needs (requesting → recording →
+ * Wraps `MediaRecorder` with the states the UI needs (requesting -> recording ->
  * ready), a ticking timer, and a best-effort input level. Two rules this hook
  * takes seriously:
  *

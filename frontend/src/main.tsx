@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { createApiClient } from "./api/client";
 import { ApiProvider } from "./api/context";
 import App from "./App";
+import { SessionProvider } from "./auth/context";
 import { applyTheme, resolveInitialTheme } from "./lib/theme";
 import "./styles.css";
 
@@ -18,9 +19,11 @@ const apiBaseUrl =
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ApiProvider client={createApiClient(apiBaseUrl)}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <SessionProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </SessionProvider>
     </ApiProvider>
   </StrictMode>,
 );

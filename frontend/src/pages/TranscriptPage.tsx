@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowsClockwise,
+  Check,
+  Copy,
+  DownloadSimple,
+} from "@phosphor-icons/react";
 import { Link, useParams } from "react-router-dom";
 
 import { useApi } from "../api/context";
@@ -100,6 +107,7 @@ export default function TranscriptPage() {
           <strong>{error.code}</strong> {error.message}
         </p>
         <button type="button" onClick={() => void load()}>
+          <ArrowsClockwise size={14} aria-hidden="true" />
           Retry
         </button>
         <p>
@@ -146,6 +154,11 @@ export default function TranscriptPage() {
             className="ghost"
             onClick={() => void copyTranscript()}
           >
+            {copied ? (
+              <Check size={15} weight="bold" aria-hidden="true" />
+            ) : (
+              <Copy size={15} aria-hidden="true" />
+            )}
             {copied ? "Copied" : "Copy transcript"}
           </button>
         </div>
@@ -156,6 +169,7 @@ export default function TranscriptPage() {
             className="ghost"
             onClick={() => downloadText(`${result.job_id}.srt`, toSrt(result))}
           >
+            <DownloadSimple size={15} aria-hidden="true" />
             Download SRT
           </button>
           <button
@@ -163,6 +177,7 @@ export default function TranscriptPage() {
             className="ghost"
             onClick={() => downloadText(`${result.job_id}.vtt`, toVtt(result))}
           >
+            <DownloadSimple size={15} aria-hidden="true" />
             Download VTT
           </button>
           <button
@@ -172,10 +187,12 @@ export default function TranscriptPage() {
               downloadText(`${result.job_id}.txt`, toPlainText(result))
             }
           >
+            <DownloadSimple size={15} aria-hidden="true" />
             Download TXT
           </button>
         </div>
         <Link className="ghost link-button" to={`/jobs/${result.job_id}`}>
+          <ArrowLeft size={15} aria-hidden="true" />
           Back to job
         </Link>
       </div>

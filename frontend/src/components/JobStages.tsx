@@ -1,3 +1,10 @@
+import {
+  ArrowClockwise,
+  CheckCircle,
+  Circle,
+  CircleNotch,
+} from "@phosphor-icons/react";
+
 import type { JobStatus } from "../api/types";
 
 const STEPS: { key: string; label: string; statuses: JobStatus[] }[] = [
@@ -41,7 +48,17 @@ export default function JobStages({ status }: { status: JobStatus }) {
             data-stage={step.key}
             aria-current={state === "current" ? "step" : undefined}
           >
-            <span className="stage-dot" aria-hidden="true" />
+            <span className="stage-mark" aria-hidden="true">
+              {retrying ? (
+                <ArrowClockwise size={15} weight="bold" />
+              ) : state === "done" ? (
+                <CheckCircle size={15} weight="fill" />
+              ) : state === "current" ? (
+                <CircleNotch size={15} weight="bold" className="spin" />
+              ) : (
+                <Circle size={15} />
+              )}
+            </span>
             <span className="stage-label">
               {step.label}
               {retrying && <> <span className="stage-note">retrying</span></>}

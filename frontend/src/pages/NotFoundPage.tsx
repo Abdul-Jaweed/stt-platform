@@ -5,7 +5,7 @@ export default function NotFoundPage() {
     <section className="page not-found-page">
       <h2>Not found</h2>
       <p>
-        <Link to="/">Back to upload</Link>
+        <Link to="/">Back to the overview</Link>
       </p>
     </section>
   );

@@ -210,3 +210,19 @@ export interface EvaluationRequest {
   provider?: string;
   language?: string;
 }
+
+export interface SessionInfo {
+  authenticated: boolean;
+  username: string | null;
+  tenant: string;
+  /** Whether the server requires a login at all (STT_UI_AUTH_ENABLED). */
+  ui_auth_enabled: boolean;
+  expires_at: number | null;
+}
+
+export interface LoginResponse {
+  username: string;
+  tenant: string;
+  expires_at: number;
+  token: string;
+}

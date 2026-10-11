@@ -1,3 +1,4 @@
+import { Check, Copy } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import type { TranscriptResult } from "../api/types";
@@ -62,10 +63,14 @@ export default function TranscriptView({ result, currentTime, onSeek }: Props) {
                 type="button"
                 className="segment-copy"
                 aria-label={`Copy segment ${index + 1}`}
-                title="Copy this segment"
+                title={copiedIndex === index ? "Copied" : "Copy this segment"}
                 onClick={() => void copySegment(index, segment.text)}
               >
-                {copiedIndex === index ? "copied" : "copy"}
+                {copiedIndex === index ? (
+                  <Check size={13} weight="bold" aria-hidden="true" />
+                ) : (
+                  <Copy size={13} aria-hidden="true" />
+                )}
               </button>
             </div>
 

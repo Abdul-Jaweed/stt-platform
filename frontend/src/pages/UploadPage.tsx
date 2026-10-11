@@ -1,3 +1,10 @@
+import {
+  ArrowsClockwise,
+  Microphone,
+  UploadSimple,
+  Waveform,
+  X,
+} from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -125,6 +132,7 @@ export default function UploadPage() {
           className={source === "file" ? "tab is-active" : "tab"}
           onClick={() => setSource("file")}
         >
+          <UploadSimple size={16} aria-hidden="true" />
           Upload a file
         </button>
         <button
@@ -136,6 +144,7 @@ export default function UploadPage() {
           className={source === "record" ? "tab is-active" : "tab"}
           onClick={() => setSource("record")}
         >
+          <Microphone size={16} aria-hidden="true" />
           Record audio
         </button>
       </div>
@@ -161,7 +170,7 @@ export default function UploadPage() {
             }}
           >
             <span className="drop-zone-icon" aria-hidden="true">
-              ⤓
+              <UploadSimple size={22} weight="bold" />
             </span>
             <p className="drop-zone-title">
               Drop an audio file here, or browse
@@ -190,6 +199,7 @@ export default function UploadPage() {
               <span className="selection-name">{file.name}</span>
               <span className="badge badge-neutral">{formatBytes(file.size)}</span>
               <button type="button" className="ghost" onClick={clearSelection}>
+                <X size={14} aria-hidden="true" />
                 Clear
               </button>
             </div>
@@ -222,6 +232,7 @@ export default function UploadPage() {
             <div role="alert" className="error">
               could not load providers: {providersError}{" "}
               <button type="button" onClick={() => void loadProviders()}>
+                <ArrowsClockwise size={14} aria-hidden="true" />
                 Retry
               </button>
             </div>
@@ -281,6 +292,7 @@ export default function UploadPage() {
 
       <div className="submit-row">
         <button type="submit" className="primary" disabled={!file || submitting}>
+          <Waveform size={16} weight="bold" aria-hidden="true" />
           {submitting ? "Submitting…" : "Transcribe"}
         </button>
         <span className="hint">

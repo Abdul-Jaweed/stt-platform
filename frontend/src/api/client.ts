@@ -5,7 +5,9 @@ import type {
   EvaluationRecord,
   EvaluationRequest,
   JobRecord,
+  LoginResponse,
   ProviderInfo,
+  SessionInfo,
   TranscriptResult,
 } from "./types";
 
@@ -43,6 +45,10 @@ export interface ApiClient {
   cancel(id: string): Promise<JobRecord>;
   getProviders(): Promise<ProviderInfo[]>;
   getHealth(): Promise<{ status: string }>;
+  /** Who the caller is; a 401 means the server wants a login. */
+  getSession(): Promise<SessionInfo>;
+  login(username: string, password: string): Promise<LoginResponse>;
+  logout(): Promise<{ ok: boolean }>;
   getEvaluation(id: string): Promise<EvaluationRecord>;
   listEvaluations(): Promise<EvaluationList>;
   createEvaluation(input: EvaluationRequest): Promise<EvaluationRecord>;
@@ -63,7 +69,9 @@ export function createApiClient(baseUrl: string): ApiClient {
 
   async function call(path: string, init?: RequestInit): Promise<Response> {
     try {
-      return await fetch(url(path), init);
+      // The session cookie is the browser's only credential: it must travel
+      // with every call, including cross-origin during local development.
+      return await fetch(url(path), { credentials: "include", ...init });
     } catch (cause) {
       throw new ApiError(
         0,
@@ -150,6 +158,13 @@ export function createApiClient(baseUrl: string): ApiClient {
     },
 
     getHealth: () => get<{ status: string }>("/v1/health/ready"),
+
+    getSession: () => get<SessionInfo>("/v1/auth/me"),
+
+    login: (username, password) =>
+      postJson<LoginResponse>("/v1/auth/login", { username, password }),
+
+    logout: () => post<{ ok: boolean }>("/v1/auth/logout"),
 
     getEvaluation: (id) =>
       get<EvaluationRecord>(`/v1/evaluations/${encodeURIComponent(id)}`),

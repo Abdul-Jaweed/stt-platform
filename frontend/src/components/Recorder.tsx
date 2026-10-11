@@ -5,6 +5,11 @@
  * recorded clip travels the same upload path as a chosen file — same
  * retention, same playback, same errors.
  */
+import {
+  ArrowCounterClockwise,
+  Record,
+  Stop,
+} from "@phosphor-icons/react";
 import { useEffect } from "react";
 
 import { useApi } from "../api/context";
@@ -65,7 +70,7 @@ export default function Recorder({
             onClick={() => void start()}
             disabled={disabled || status === "requesting"}
           >
-            <span className="record-dot" aria-hidden="true" />
+            <Record size={15} weight="fill" aria-hidden="true" />
             {status === "requesting" ? "Waiting for microphone…" : "Start recording"}
           </button>
         )}
@@ -78,7 +83,7 @@ export default function Recorder({
               onClick={stop}
               aria-label="Stop recording"
             >
-              <span className="record-square" aria-hidden="true" />
+              <Stop size={15} weight="fill" aria-hidden="true" />
               Stop recording
             </button>
             <span className="recorder-timer" role="timer">
@@ -156,6 +161,7 @@ export default function Recorder({
                 onDiscarded?.();
               }}
             >
+              <ArrowCounterClockwise size={14} aria-hidden="true" />
               Discard
             </button>
           </div>

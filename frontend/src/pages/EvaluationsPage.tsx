@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  ArrowsClockwise,
+  ArrowsDownUp,
+  ChartBar,
+  MagnifyingGlass,
+  Play,
+  WarningCircle,
+  X,
+} from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
@@ -8,6 +17,12 @@ import type {
   MlflowOutcome,
   ProviderInfo,
 } from "../api/types";
+
+/** How many runs the overview shows before it offers the rest. */
+const PAGE_SIZE = 8;
+
+type SortKey = "started" | "wer" | "cer" | "rtf";
+type SortDir = "asc" | "desc";
 
 /**
  * A meter for a rate that is 0..1 by definition. `null` stays a statement
@@ -55,10 +70,36 @@ function seconds(value: number | null | undefined): string {
   return `${value.toFixed(2)}s`;
 }
 
-function ApiFailure({ error }: { error: { code: string; message: string } }) {
+function shortDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ApiFailure({
+  error,
+  onRetry,
+}: {
+  error: { code: string; message: string };
+  onRetry?: () => void;
+}) {
   return (
     <p role="alert" className="error">
+      <WarningCircle size={16} weight="bold" aria-hidden="true" />
       <strong>{error.code}</strong> {error.message}
+      {onRetry && (
+        <button type="button" className="ghost" onClick={onRetry}>
+          <ArrowsClockwise size={14} aria-hidden="true" />
+          Retry
+        </button>
+      )}
     </p>
   );
 }
@@ -97,134 +138,254 @@ function MlflowStatus({ outcome }: { outcome: MlflowOutcome | null }) {
   );
 }
 
+/** Summary numbers, every one of them derived from the runs themselves. */
+function Summary({ rows }: { rows: EvaluationComparisonRow[] }) {
+  const measured = rows
+    .map((row) => row.wer_micro)
+    .filter((value): value is number => value !== null && value !== undefined);
+  const bestWer = measured.length > 0 ? Math.min(...measured) : null;
+  const providers = new Set(rows.map((row) => row.provider)).size;
+  const withFailures = rows.filter((row) => row.failures > 0).length;
+
+  return (
+    <dl className="stat-grid" role="group" aria-label="Evaluation summary">
+      <div className="stat">
+        <dt>Runs</dt>
+        <dd>{rows.length}</dd>
+      </div>
+      <div className="stat">
+        <dt>Best WER</dt>
+        <dd>{bestWer === null ? "not reported" : percent(bestWer)}</dd>
+      </div>
+      <div className="stat">
+        <dt>Providers</dt>
+        <dd>{providers}</dd>
+      </div>
+      <div className="stat">
+        <dt>With failures</dt>
+        <dd>{withFailures}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: SortDir };
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={
+        active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"
+      }
+    >
+      <button
+        type="button"
+        className={active ? "sort-button is-active" : "sort-button"}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        <ArrowsDownUp size={12} weight="bold" aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
 function ComparisonTable({
   rows,
+  sort,
+  onSort,
   onSelect,
 }: {
   rows: EvaluationComparisonRow[];
+  sort: { key: SortKey; dir: SortDir };
+  onSort: (key: SortKey) => void;
   onSelect: (id: string) => void;
 }) {
-  if (rows.length === 0) {
-    return <p className="hint">No evaluations yet. Run one above.</p>;
-  }
   return (
-    <table aria-label="Evaluations">
-      <thead>
-        <tr>
-          <th scope="col">Provider</th>
-          <th scope="col">Model</th>
-          <th scope="col">Dataset</th>
-          <th scope="col">Clips</th>
-          <th scope="col">WER</th>
-          <th scope="col">CER</th>
-          <th scope="col">RTF</th>
-          <th scope="col">Word timestamps</th>
-          <th scope="col">Evidence</th>
-          <th scope="col">Run</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.evaluation_id}>
-            <td>{row.provider}</td>
-            <td>{row.model ?? "—"}</td>
-            <td>
-              {row.dataset_id}@{row.dataset_version}
-            </td>
-            <td>
-              {row.clips_scored}/{row.clips_total}
-              {row.failures > 0 && ` (${row.failures} failed)`}
-            </td>
-            <td>
-              <Meter value={row.wer_micro} label="Word error rate" />
-              {percent(row.wer_micro)}
-            </td>
-            <td>
-              <Meter value={row.cer_micro} label="Character error rate" />
-              {percent(row.cer_micro)}
-            </td>
-            <td>
-              <Meter value={row.rtf_mean} label="Real-time factor" max={0.5} />
-              {row.rtf_mean === null ? "—" : row.rtf_mean.toFixed(3)}
-            </td>
-            <td>
-              {row.word_availability_mean === null
-                ? "not reported"
-                : percent(row.word_availability_mean)}
-            </td>
-            <td>
-              {row.insufficient_evidence ? (
-                <span className="badge">
-                  insufficient — {row.clips_scored} clip
-                  {row.clips_scored === 1 ? "" : "s"}
-                </span>
-              ) : (
-                "ok"
-              )}
-            </td>
-            <td>
-              <button type="button" onClick={() => onSelect(row.evaluation_id)}>
-                {row.evaluation_id}
-              </button>
-            </td>
+    <div className="table-scroll">
+      <table aria-label="Evaluations">
+        <thead>
+          <tr>
+            <th scope="col">Provider</th>
+            <th scope="col">Model</th>
+            <th scope="col">Dataset</th>
+            <th scope="col">Clips</th>
+            <SortHeader label="WER" sortKey="wer" sort={sort} onSort={onSort} />
+            <SortHeader label="CER" sortKey="cer" sort={sort} onSort={onSort} />
+            <SortHeader label="RTF" sortKey="rtf" sort={sort} onSort={onSort} />
+            <th scope="col">Word timestamps</th>
+            <th scope="col">Evidence</th>
+            <SortHeader
+              label="Started"
+              sortKey="started"
+              sort={sort}
+              onSort={onSort}
+            />
+            <th scope="col">Run</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.evaluation_id}>
+              <td>{row.provider}</td>
+              <td>{row.model ?? "—"}</td>
+              <td>
+                {row.dataset_id}@{row.dataset_version}
+              </td>
+              <td>
+                {row.clips_scored}/{row.clips_total}
+                {row.failures > 0 && ` (${row.failures} failed)`}
+              </td>
+              <td>
+                <Meter value={row.wer_micro} label="Word error rate" />
+                {percent(row.wer_micro)}
+              </td>
+              <td>
+                <Meter value={row.cer_micro} label="Character error rate" />
+                {percent(row.cer_micro)}
+              </td>
+              <td>
+                <Meter value={row.rtf_mean} label="Real-time factor" max={0.5} />
+                {row.rtf_mean === null ? "—" : row.rtf_mean.toFixed(3)}
+              </td>
+              <td>
+                {row.word_availability_mean === null
+                  ? "not reported"
+                  : percent(row.word_availability_mean)}
+              </td>
+              <td>
+                {row.insufficient_evidence ? (
+                  <span className="badge">
+                    insufficient — {row.clips_scored} clip
+                    {row.clips_scored === 1 ? "" : "s"}
+                  </span>
+                ) : (
+                  "ok"
+                )}
+              </td>
+              <td>{shortDate(row.started_at)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => onSelect(row.evaluation_id)}
+                >
+                  {row.evaluation_id}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupTable({ record }: { record: EvaluationRecord }) {
+  const groups = Object.entries(record.by_group ?? {});
+  if (groups.length === 0) return null;
+
+  return (
+    <>
+      <h4>By group</h4>
+      <div className="table-scroll">
+        <table aria-label="By group">
+          <thead>
+            <tr>
+              <th scope="col">Group</th>
+              <th scope="col">Provider</th>
+              <th scope="col">Clips</th>
+              <th scope="col">WER</th>
+              <th scope="col">CER</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.flatMap(([group, entries]) =>
+              Object.entries(entries ?? {}).map(([key, metrics]) => (
+                <tr key={`${group}:${key}`}>
+                  <td>{group}</td>
+                  <td>{key}</td>
+                  <td>{metrics.clips_scored ?? "—"}</td>
+                  <td>{percent(metrics.wer_micro ?? null)}</td>
+                  <td>{percent(metrics.cer_micro ?? null)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
 function ClipTable({ record }: { record: EvaluationRecord }) {
   return (
-    <table aria-label="Clips">
-      <thead>
-        <tr>
-          <th scope="col">Clip</th>
-          <th scope="col">Status</th>
-          <th scope="col">WER</th>
-          <th scope="col">CER</th>
-          <th scope="col">Processing</th>
-          <th scope="col">RTF</th>
-          <th scope="col">Words</th>
-          <th scope="col">Error</th>
-        </tr>
-      </thead>
-      <tbody>
-        {record.clips.map((clip) => (
-          <tr key={clip.clip_id}>
-            <td>{clip.clip_id}</td>
-            <td>{clip.status}</td>
-            <td>{percent(clip.wer)}</td>
-            <td>{percent(clip.cer)}</td>
-            <td>{seconds(clip.timings.processing_s)}</td>
-            <td>
-              {clip.timings.real_time_factor === null ||
-              clip.timings.real_time_factor === undefined
-                ? "—"
-                : clip.timings.real_time_factor.toFixed(3)}
-            </td>
-            <td>
-              {clip.timestamps?.word_availability === null ||
-              clip.timestamps?.word_availability === undefined
-                ? "not reported"
-                : percent(clip.timestamps.word_availability as number)}
-            </td>
-            <td>{clip.error ?? "—"}</td>
+    <div className="table-scroll">
+      <table aria-label="Clips">
+        <thead>
+          <tr>
+            <th scope="col">Clip</th>
+            <th scope="col">Status</th>
+            <th scope="col">WER</th>
+            <th scope="col">CER</th>
+            <th scope="col">Processing</th>
+            <th scope="col">RTF</th>
+            <th scope="col">Words</th>
+            <th scope="col">Error</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {record.clips.map((clip) => (
+            <tr key={clip.clip_id}>
+              <td>{clip.clip_id}</td>
+              <td>{clip.status}</td>
+              <td>{percent(clip.wer)}</td>
+              <td>{percent(clip.cer)}</td>
+              <td>{seconds(clip.timings.processing_s)}</td>
+              <td>
+                {clip.timings.real_time_factor === null ||
+                clip.timings.real_time_factor === undefined
+                  ? "—"
+                  : clip.timings.real_time_factor.toFixed(3)}
+              </td>
+              <td>
+                {clip.timestamps?.word_availability === null ||
+                clip.timestamps?.word_availability === undefined
+                  ? "not reported"
+                  : percent(clip.timestamps.word_availability as number)}
+              </td>
+              <td>{clip.error ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 export default function EvaluationsPage() {
   const api = useApi();
   const [rows, setRows] = useState<EvaluationComparisonRow[]>([]);
+  const [listError, setListError] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [datasetId, setDatasetId] = useState("stt-eval-core");
   const [language, setLanguage] = useState("en");
   const [provider, setProvider] = useState("");
   const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [runError, setRunError] = useState<{
     code: string;
     message: string;
@@ -235,15 +396,26 @@ export default function EvaluationsPage() {
     code: string;
     message: string;
   } | null>(null);
+  const [query, setQuery] = useState("");
+  const [onlyFailures, setOnlyFailures] = useState(false);
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
+    key: "started",
+    dir: "desc",
+  });
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const inFlight = useRef(false);
+  const datasetInput = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const data = await api.listEvaluations();
       setRows(data.evaluations);
-    } catch {
-      // An empty comparison table is better than a broken page; the run
-      // form surfaces its own errors.
+      setListError(null);
+    } catch (error) {
+      // An empty table would quietly claim there is no history: say what
+      // happened and offer to try again.
       setRows([]);
+      setListError(toFailure(error));
     }
   }, [api]);
 
@@ -255,7 +427,60 @@ export default function EvaluationsPage() {
       .catch(() => setProviders([]));
   }, [api, refresh]);
 
+  // A run is synchronous and can take a while: show that it is alive rather
+  // than leaving a frozen button behind.
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0);
+      return;
+    }
+    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const matching = rows.filter((row) => {
+      if (onlyFailures && row.failures === 0) return false;
+      if (!needle) return true;
+      return [row.provider, row.model ?? "", row.dataset_id, row.evaluation_id]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle);
+    });
+    const direction = sort.dir === "asc" ? 1 : -1;
+    const value = (row: EvaluationComparisonRow): number | null => {
+      if (sort.key === "wer") return row.wer_micro;
+      if (sort.key === "cer") return row.cer_micro;
+      if (sort.key === "rtf") return row.rtf_mean;
+      return row.started_at ? Date.parse(row.started_at) : null;
+    };
+    return [...matching].sort((left, right) => {
+      const a = value(left);
+      const b = value(right);
+      // A metric nobody measured never wins a sort: it goes last either way.
+      if (a === null && b === null) return 0;
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return (a - b) * direction;
+    });
+  }, [rows, query, onlyFailures, sort]);
+
+  const shown = filtered.slice(0, visible);
+
+  function toggleSort(key: SortKey) {
+    setSort((current) =>
+      current.key === key
+        ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "started" ? "desc" : "asc" },
+    );
+  }
+
   async function run() {
+    // A second click while the first request is open would run the corpus
+    // twice; the button is disabled, and this is the belt to its braces.
+    if (inFlight.current) return;
+    inFlight.current = true;
     setRunning(true);
     setRunError(null);
     try {
@@ -269,6 +494,7 @@ export default function EvaluationsPage() {
     } catch (err) {
       setRunError(toFailure(err));
     } finally {
+      inFlight.current = false;
       setRunning(false);
     }
   }
@@ -284,67 +510,196 @@ export default function EvaluationsPage() {
 
   return (
     <section className="page evaluations-page">
-      <h2>Evaluations</h2>
-
-      <div className="field">
-        <label htmlFor="dataset-id">Dataset</label>
-        <input
-          id="dataset-id"
-          value={datasetId}
-          onChange={(event) => setDatasetId(event.target.value)}
-        />
-        <label htmlFor="eval-language">Language</label>
-        <input
-          id="eval-language"
-          value={language}
-          onChange={(event) => setLanguage(event.target.value)}
-        />
-        <label htmlFor="eval-provider">Provider</label>
-        <select
-          id="eval-provider"
-          value={provider}
-          onChange={(event) => setProvider(event.target.value)}
-        >
-          <option value="">default</option>
-          {providers.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.id}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={() => void run()} disabled={running}>
-          Run evaluation
+      <div className="page-head">
+        <div>
+          <h2>Evaluations</h2>
+          <p className="hint">
+            Compare providers on the same reference corpus. Every number was
+            measured; anything that could not be measured says so instead.
+          </p>
+        </div>
+        <button type="button" className="ghost" onClick={() => void refresh()}>
+          <ArrowsClockwise size={14} aria-hidden="true" />
+          Refresh
         </button>
       </div>
-      <p className="hint">
-        Runs synchronously against the reference corpus; the provider that
-        actually ran is recorded per clip.
-      </p>
-      {runError && <ApiFailure error={runError} />}
 
-      <h3>Comparison</h3>
-      <ComparisonTable rows={rows} onSelect={(id) => void load(id)} />
+      <Summary rows={rows} />
 
-      <h3>Detail</h3>
-      <div className="field">
-        <label htmlFor="evaluation-id">Evaluation ID</label>
-        <input
-          id="evaluation-id"
-          value={loadId}
-          onChange={(event) => setLoadId(event.target.value)}
-        />
-        <button type="button" onClick={() => void load(loadId.trim())}>
-          Load
-        </button>
-      </div>
-      {loadError && <ApiFailure error={loadError} />}
+      <section className="card" aria-labelledby="run-heading">
+        <h3 id="run-heading">Run an evaluation</h3>
+        <div className="run-form">
+          <div className="field">
+            <label htmlFor="dataset-id">Dataset</label>
+            <input
+              id="dataset-id"
+              ref={datasetInput}
+              value={datasetId}
+              onChange={(event) => setDatasetId(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="eval-language">Language</label>
+            <input
+              id="eval-language"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="eval-provider">Provider</label>
+            <select
+              id="eval-provider"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value)}
+            >
+              <option value="">default</option>
+              {providers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void run()}
+            disabled={running}
+          >
+            <Play size={15} weight="fill" aria-hidden="true" />
+            {running ? "Running…" : "Run evaluation"}
+          </button>
+        </div>
+        {running && (
+          <div
+            className="run-progress"
+            role="progressbar"
+            aria-label="Evaluation in progress"
+            aria-valuetext={`running for ${elapsed}s`}
+          >
+            <span className="run-progress-bar" aria-hidden="true" />
+            <span className="hint">
+              running for {elapsed}s — evaluations run synchronously on the
+              server, so this page waits for the result
+            </span>
+          </div>
+        )}
+        {runError && <ApiFailure error={runError} />}
+        <p className="hint">
+          The provider that actually ran is recorded per clip, not assumed.
+        </p>
+      </section>
+
+      <section className="card" aria-labelledby="compare-heading">
+        <div className="table-head">
+          <h3 id="compare-heading">Comparison</h3>
+          <div className="table-tools">
+            <label className="search-field">
+              <MagnifyingGlass size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search runs"
+                placeholder="Provider, model or dataset"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <label className="check-field">
+              <input
+                type="checkbox"
+                checked={onlyFailures}
+                onChange={(event) => setOnlyFailures(event.target.checked)}
+              />
+              Only runs with failures
+            </label>
+          </div>
+        </div>
+
+        {listError ? (
+          <ApiFailure error={listError} onRetry={() => void refresh()} />
+        ) : rows.length === 0 ? (
+          <div className="empty-state" data-testid="evaluations-empty">
+            <ChartBar size={26} weight="bold" aria-hidden="true" />
+            <h4>No evaluations yet</h4>
+            <p className="hint">
+              An evaluation scores a provider against the reference corpus.
+              Generate the corpus first on a fresh checkout, then run one
+              above.
+            </p>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => datasetInput.current?.focus()}
+            >
+              Run an evaluation
+            </button>
+          </div>
+        ) : (
+          <>
+            <ComparisonTable
+              rows={shown}
+              sort={sort}
+              onSort={toggleSort}
+              onSelect={(id) => void load(id)}
+            />
+            {filtered.length > shown.length && (
+              <button
+                type="button"
+                className="ghost show-more"
+                onClick={() => setVisible((value) => value + PAGE_SIZE)}
+              >
+                Show {filtered.length - shown.length} more
+              </button>
+            )}
+            {filtered.length === 0 && (
+              <p className="hint">
+                No runs match this filter — clear the search to see all{" "}
+                {rows.length}.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="card" aria-labelledby="open-heading">
+        <h3 id="open-heading">Open a run by ID</h3>
+        <div className="run-form">
+          <div className="field">
+            <label htmlFor="evaluation-id">Evaluation ID</label>
+            <input
+              id="evaluation-id"
+              value={loadId}
+              onChange={(event) => setLoadId(event.target.value)}
+            />
+          </div>
+          <button type="button" onClick={() => void load(loadId.trim())}>
+            Load
+          </button>
+        </div>
+        {loadError && <ApiFailure error={loadError} />}
+      </section>
 
       {detail && (
-        <div className="evaluation-detail">
-          <h4>
-            {detail.evaluation_id} — {detail.provider}
-            {detail.model ? ` (${detail.model})` : ""}
-          </h4>
+        <section
+          className="card evaluation-detail"
+          data-testid="evaluation-detail"
+          aria-labelledby="detail-heading"
+        >
+          <div className="detail-head">
+            <h3 id="detail-heading">
+              {detail.evaluation_id} — {detail.provider}
+              {detail.model ? ` (${detail.model})` : ""}
+            </h3>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setDetail(null)}
+            >
+              <X size={14} aria-hidden="true" />
+              Close
+            </button>
+          </div>
           <p className="hint">
             {detail.dataset_id}@{detail.dataset_version} ·{" "}
             {String(detail.aggregate.clips_scored ?? 0)}/
@@ -363,8 +718,10 @@ export default function EvaluationsPage() {
             </p>
           )}
           <MlflowStatus outcome={detail.mlflow} />
+          <GroupTable record={detail} />
+          <h4>Clips</h4>
           <ClipTable record={detail} />
-        </div>
+        </section>
       )}
     </section>
   );

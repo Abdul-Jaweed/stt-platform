@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 
 import { createApiClient } from "../api/client";
 import { ApiProvider } from "../api/context";
@@ -308,4 +308,257 @@ test("draws error rates as meters as well as numbers", async () => {
   expect(meters.length).toBe(3); // WER, CER, RTF
   expect(meters[0]).toHaveAttribute("aria-valuenow", "10");
   expect(within(table).getByText("10.0%")).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// Redesign: the overview has to answer "which provider is best, and can I
+// trust that number" before anyone reads a table.
+// ---------------------------------------------------------------------------
+
+const manyRows = (count: number) =>
+  Array.from({ length: count }, (_, index) =>
+    row({
+      evaluation_id: `eval-${index + 1}`,
+      provider: index % 2 === 0 ? "faster-whisper" : "sarvam",
+      model: index % 2 === 0 ? "large-v3-turbo" : "saaras:v4",
+      wer_micro: 0.1 + index / 100,
+      cer_micro: 0.09 + index / 100,
+      rtf_mean: 0.07 + index / 1000,
+      failures: index === 1 ? 2 : 0,
+      started_at: `2026-10-1${(index % 9) + 1}T20:00:00Z`,
+    }),
+  );
+
+function listHandler(rows: unknown[]) {
+  return http.get(`${BASE}/v1/evaluations`, () =>
+    HttpResponse.json({ evaluations: rows, count: rows.length }),
+  );
+}
+
+test("summarises the runs before showing any table", async () => {
+  server.use(
+    listHandler([
+      row({ evaluation_id: "eval-1", wer_micro: 0.1 }),
+      row({ evaluation_id: "eval-2", provider: "sarvam", wer_micro: 0.21 }),
+      row({ evaluation_id: "eval-3", provider: "deepgram", wer_micro: null, failures: 3 }),
+    ]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+
+  const summary = await screen.findByRole("group", { name: /evaluation summary/i });
+  expect(within(summary).getByText(/^runs$/i).nextSibling).toHaveTextContent("3");
+  expect(within(summary).getByText(/best wer/i).nextSibling).toHaveTextContent("10.0%");
+  expect(within(summary).getByText(/^providers$/i).nextSibling).toHaveTextContent("3");
+  expect(within(summary).getByText(/with failures/i).nextSibling).toHaveTextContent("1");
+});
+
+test("a run whose metrics could not be measured is not counted as a best", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1", wer_micro: null })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+
+  const summary = await screen.findByRole("group", { name: /evaluation summary/i });
+  expect(within(summary).getByText(/best wer/i).nextSibling).toHaveTextContent(/not reported/i);
+});
+
+test("searches across provider, model and dataset", async () => {
+  server.use(
+    listHandler([
+      row({ evaluation_id: "eval-1", provider: "faster-whisper" }),
+      row({ evaluation_id: "eval-2", provider: "sarvam", model: "saaras:v4" }),
+    ]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  expect(within(table).getAllByRole("row")).toHaveLength(3);
+
+  await userEvent.type(screen.getByRole("searchbox", { name: /search/i }), "saaras");
+
+  expect(within(table).getAllByRole("row")).toHaveLength(2);
+});
+
+test("can hide everything that did not fail", async () => {
+  server.use(
+    listHandler([
+      row({ evaluation_id: "eval-1", failures: 0 }),
+      row({ evaluation_id: "eval-2", provider: "sarvam", failures: 2 }),
+    ]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+
+  await userEvent.click(screen.getByRole("checkbox", { name: /with failures/i }));
+
+  expect(within(table).getAllByRole("row")).toHaveLength(2);
+  expect(within(table).getByText("sarvam")).toBeInTheDocument();
+});
+
+test("sorts by a column and tells assistive tech which way", async () => {
+  server.use(
+    listHandler([
+      row({ evaluation_id: "eval-1", provider: "faster-whisper", wer_micro: 0.21 }),
+      row({ evaluation_id: "eval-2", provider: "sarvam", wer_micro: 0.1 }),
+    ]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+
+  const werHeader = within(table).getByRole("columnheader", { name: /wer/i });
+  await userEvent.click(within(werHeader).getByRole("button"));
+
+  expect(werHeader).toHaveAttribute("aria-sort", "ascending");
+  const bodyRows = within(table).getAllByRole("row").slice(1);
+  expect(within(bodyRows[0]).getByText("sarvam")).toBeInTheDocument();
+});
+
+test("shows a page of runs and offers the rest", async () => {
+  server.use(
+    listHandler(manyRows(11)),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  expect(within(table).getAllByRole("row")).toHaveLength(9); // header + 8
+
+  await userEvent.click(screen.getByRole("button", { name: /show 3 more/i }));
+
+  expect(within(table).getAllByRole("row")).toHaveLength(12);
+});
+
+test("an empty history explains how to make one", async () => {
+  server.use(
+    listHandler([]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+
+  const empty = await screen.findByTestId("evaluations-empty");
+  expect(empty).toHaveTextContent(/no evaluations yet/i);
+  expect(empty).toHaveTextContent(/reference corpus/i);
+
+  await userEvent.click(within(empty).getByRole("button", { name: /run an evaluation/i }));
+  expect(screen.getByLabelText(/dataset/i)).toHaveFocus();
+});
+
+test("a failed list load is reported and can be retried", async () => {
+  let calls = 0;
+  server.use(
+    http.get(`${BASE}/v1/evaluations`, () => {
+      calls += 1;
+      return calls === 1
+        ? HttpResponse.json(
+            { error: { code: "INTERNAL_ERROR", message: "database is down" } },
+            { status: 500 },
+          )
+        : HttpResponse.json({ evaluations: [row()], count: 1 });
+    }),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+  );
+
+  renderPage();
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/database is down/i);
+
+  await userEvent.click(within(alert).getByRole("button", { name: /retry/i }));
+
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  expect(within(table).getByText("faster-whisper")).toBeInTheDocument();
+});
+
+test("a second run cannot be started while one is in flight", async () => {
+  let posts = 0;
+  server.use(
+    listHandler([]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.post(`${BASE}/v1/evaluations`, async () => {
+      posts += 1;
+      await delay(150);
+      return HttpResponse.json(record(), { status: 201 });
+    }),
+  );
+
+  renderPage();
+  const runButton = await screen.findByRole("button", { name: /run evaluation/i });
+
+  await userEvent.click(runButton);
+  await userEvent.click(runButton);
+
+  expect(posts).toBe(1);
+});
+
+test("a run in flight says it is running and how long it has been", async () => {
+  server.use(
+    listHandler([]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.post(`${BASE}/v1/evaluations`, async () => {
+      await delay(150);
+      return HttpResponse.json(record(), { status: 201 });
+    }),
+  );
+
+  renderPage();
+  await userEvent.click(await screen.findByRole("button", { name: /run evaluation/i }));
+
+  const progress = screen.getByRole("progressbar", { name: /evaluation in progress/i });
+  expect(progress).toHaveTextContent(/running for \d+s/i);
+  expect(screen.getByRole("button", { name: /running/i })).toBeDisabled();
+});
+
+test("a run's detail opens from the table and closes again", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+
+  await userEvent.click(within(table).getByRole("button", { name: "eval-1" }));
+
+  const detail = await screen.findByTestId("evaluation-detail");
+  expect(within(detail).getByText(/run-123/)).toBeInTheDocument();
+
+  await userEvent.click(within(detail).getByRole("button", { name: /close/i }));
+  expect(screen.queryByTestId("evaluation-detail")).not.toBeInTheDocument();
+});
+
+test("per-group results are shown when the run has them", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () =>
+      HttpResponse.json(
+        record({
+          by_group: {
+            en: { "faster-whisper": { clips_scored: 6, wer_micro: 0.08 } },
+            hi: { "faster-whisper": { clips_scored: 2, wer_micro: 0.24 } },
+          },
+        }),
+      ),
+    ),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  await userEvent.click(within(table).getByRole("button", { name: "eval-1" }));
+
+  const groups = await screen.findByRole("table", { name: /by group/i });
+  expect(within(groups).getByText("en")).toBeInTheDocument();
+  expect(within(groups).getByText("hi")).toBeInTheDocument();
+  expect(within(groups).getByText("8.0%")).toBeInTheDocument();
 });

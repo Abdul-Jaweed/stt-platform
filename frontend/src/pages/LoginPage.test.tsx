@@ -5,7 +5,13 @@ import { Route, Routes } from "react-router-dom";
 import { expect, test, vi } from "vitest";
 
 import { server } from "../test/server";
-import { BASE, loginHandler, meUnauthorized, renderApp } from "../test/app";
+import {
+  BASE,
+  authConfigHandler,
+  loginHandler,
+  meUnauthorized,
+  renderApp,
+} from "../test/app";
 import LoginPage from "./LoginPage";
 
 function AppWithLogin() {
@@ -129,4 +135,25 @@ test("blocks a second submission while the first is in flight", async () => {
   const submit = screen.getByRole("button", { name: /signing in/i });
   expect(submit).toBeDisabled();
   await waitFor(() => expect(screen.getByText("app home")).toBeInTheDocument());
+});
+
+test("says nothing about default credentials when the deployment uses real ones", async () => {
+  server.use(meUnauthorized(), authConfigHandler(false));
+
+  renderApp("/login", <AppWithLogin />);
+
+  await screen.findByRole("heading", { name: /sign in/i });
+  await waitFor(() =>
+    expect(screen.queryByText(/development default credentials/i)).toBeNull(),
+  );
+});
+
+test("admits the development defaults only while they are actually in force", async () => {
+  server.use(meUnauthorized(), authConfigHandler(true));
+
+  renderApp("/login", <AppWithLogin />);
+
+  expect(
+    await screen.findByText(/development default credentials/i),
+  ).toBeInTheDocument();
 });

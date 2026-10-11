@@ -1,5 +1,6 @@
 import { ApiError, normalizeError } from "./errors";
 import type {
+  AuthConfig,
   EvaluationList,
   LivePreview,
   EvaluationRecord,
@@ -47,6 +48,8 @@ export interface ApiClient {
   getHealth(): Promise<{ status: string }>;
   /** Who the caller is; a 401 means the server wants a login. */
   getSession(): Promise<SessionInfo>;
+  /** Whether login is required, and whether the dev defaults are in force. */
+  getAuthConfig(): Promise<AuthConfig>;
   login(username: string, password: string): Promise<LoginResponse>;
   logout(): Promise<{ ok: boolean }>;
   getEvaluation(id: string): Promise<EvaluationRecord>;
@@ -160,6 +163,7 @@ export function createApiClient(baseUrl: string): ApiClient {
     getHealth: () => get<{ status: string }>("/v1/health/ready"),
 
     getSession: () => get<SessionInfo>("/v1/auth/me"),
+    getAuthConfig: () => get<AuthConfig>("/v1/auth/config"),
 
     login: (username, password) =>
       postJson<LoginResponse>("/v1/auth/login", { username, password }),

@@ -13,6 +13,7 @@ from stt_platform.services.auth import (
     SessionTokens,
     hash_password,
     is_weak_password,
+    uses_development_credentials,
     verify_password,
 )
 
@@ -112,3 +113,49 @@ def test_session_token_rejects_garbage():
 )
 def test_weak_password_rule(password, weak):
     assert is_weak_password(password) is weak
+
+
+# ---------------------------------------------------------------------------
+# The login page must not advertise credentials that are not in use: the API
+# reports whether the *development* defaults are what will actually work.
+# ---------------------------------------------------------------------------
+
+
+def _settings(**overrides):
+    from stt_platform.core.config import Settings
+
+    values = dict(_env_file=None, ui_password="stt", ui_password_hash=None)
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_development_credentials_are_recognised():
+    assert uses_development_credentials(_settings()) is True
+
+
+def test_production_never_counts_as_development_credentials():
+    # A production deployment also has to satisfy the fail-closed guard
+    # (session secret + a real password) before this question is even asked.
+    assert (
+        uses_development_credentials(
+            _settings(
+                environment="production",
+                ui_password="a-long-real-password",
+                session_secret="x" * 32,
+            )
+        )
+        is False
+    )
+
+
+def test_a_real_password_is_not_a_development_credential():
+    assert uses_development_credentials(_settings(ui_password="correct-horse-battery")) is False
+
+
+def test_a_precomputed_hash_is_not_a_development_credential():
+    assert (
+        uses_development_credentials(
+            _settings(ui_password=None, ui_password_hash=hash_password("whatever"))
+        )
+        is False
+    )

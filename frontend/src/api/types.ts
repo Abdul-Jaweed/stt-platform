@@ -220,6 +220,12 @@ export interface SessionInfo {
   expires_at: number | null;
 }
 
+/** `GET /v1/auth/config`: two booleans, no secrets. */
+export interface AuthConfig {
+  ui_auth_enabled: boolean;
+  dev_credentials: boolean;
+}
+
 export interface LoginResponse {
   username: string;
   tenant: string;

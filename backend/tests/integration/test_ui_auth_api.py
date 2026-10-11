@@ -261,3 +261,28 @@ def test_a_password_hash_setting_replaces_the_plaintext_one(make_client):
         ).status_code
         == 200
     )
+
+
+def test_auth_config_is_public_and_reports_the_development_defaults(make_client):
+    """The login page asks this to decide whether to show the dev hint.
+
+    It carries no secret — two booleans — and it must be reachable without a
+    session, because it is needed *before* anyone has one.
+    """
+    client = make_client()
+
+    response = client.get("/v1/auth/config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"ui_auth_enabled": True, "dev_credentials": True}
+    assert "stt" not in response.text.replace("\"dev_credentials\"", "")
+
+
+def test_auth_config_stops_claiming_development_credentials_once_they_change(make_client):
+    client = make_client(ui_password="a-long-real-password", ui_password_hash=None)
+
+    body = client.get("/v1/auth/config").json()
+
+    assert body["dev_credentials"] is False
+    assert body["ui_auth_enabled"] is True

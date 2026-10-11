@@ -15,8 +15,17 @@ from stt_platform.api.ratelimit import SlidingWindowLimiter
 from stt_platform.api.security import SESSION_COOKIE, resolve_session
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import Unauthorized
-from stt_platform.schemas.auth import LoginRequest, LoginResponse, SessionInfo
-from stt_platform.services.auth import SessionTokens, verify_password
+from stt_platform.schemas.auth import (
+    AuthConfig,
+    LoginRequest,
+    LoginResponse,
+    SessionInfo,
+)
+from stt_platform.services.auth import (
+    SessionTokens,
+    uses_development_credentials,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -38,6 +47,21 @@ def _client_key(request: Request, username: str) -> str:
     noisy client cannot lock everyone out and one account cannot be sprayed."""
     host = request.client.host if request.client else "unknown"
     return f"{host}:{username.lower()}"
+
+
+@router.get("/config", response_model=AuthConfig)
+def config(request: Request) -> AuthConfig:
+    """Public: the login page needs this before anyone has a session.
+
+    It answers whether login is required at all and whether the development
+    defaults are still in force. Neither answer is a secret, and neither
+    reveals a credential.
+    """
+    settings = _settings(request)
+    return AuthConfig(
+        ui_auth_enabled=settings.ui_auth_enabled,
+        dev_credentials=uses_development_credentials(settings),
+    )
 
 
 @router.post("/login", response_model=LoginResponse)

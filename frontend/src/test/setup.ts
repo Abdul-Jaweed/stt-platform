@@ -1,9 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
+import { authConfigHandler } from "./app";
 import { server } from "./server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+// Every test gets a sane `/v1/auth/config` (login not required, no dev
+// defaults): the login page asks for it on mount, and an unhandled request
+// would otherwise read as "the server said no".
+beforeEach(() => server.use(authConfigHandler(false)));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 

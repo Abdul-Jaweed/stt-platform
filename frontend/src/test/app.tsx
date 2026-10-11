@@ -38,6 +38,16 @@ export function meHandler(body: object = SESSION_AUTHENTICATED) {
   return http.get(`${BASE}/v1/auth/me`, () => HttpResponse.json(body));
 }
 
+/** `/v1/auth/config`: what the login page asks before anyone has a session. */
+export function authConfigHandler(devCredentials = false, uiAuthEnabled = true) {
+  return http.get(`${BASE}/v1/auth/config`, () =>
+    HttpResponse.json({
+      ui_auth_enabled: uiAuthEnabled,
+      dev_credentials: devCredentials,
+    }),
+  );
+}
+
 export function meUnauthorized() {
   return http.get(`${BASE}/v1/auth/me`, () =>
     HttpResponse.json(

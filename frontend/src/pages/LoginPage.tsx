@@ -5,10 +5,11 @@ import {
   SignIn,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
+import { useApi } from "../api/context";
 import { useSession } from "../auth/context";
 import BrandMark from "../components/BrandMark";
 import ThemeToggle from "../components/ThemeToggle";
@@ -36,8 +37,29 @@ export default function LoginPage() {
     username?: string;
     password?: string;
   }>({});
+  // null = not answered yet. The hint below must not guess: claiming the
+  // development defaults are in use when they are not is both wrong and a
+  // small leak, and a deployment with generated credentials would see it.
+  const [devCredentials, setDevCredentials] = useState<boolean | null>(null);
+  const api = useApi();
 
   const next = safeNext(params.get("next"));
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getAuthConfig()
+      .then((config) => {
+        if (!cancelled) setDevCredentials(config.dev_credentials);
+      })
+      .catch(() => {
+        // No answer means no claim: silence is the safe default here.
+        if (!cancelled) setDevCredentials(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   if (status === "ready" && authenticated) {
     return <Navigate to={next} replace />;
@@ -139,11 +161,13 @@ export default function LoginPage() {
             {submitting ? "Signing in…" : "Sign in"}
           </button>
 
-          <p className="hint auth-hint">
-            Development default credentials are <code>stt</code> /{" "}
-            <code>stt</code>. Change them before deploying — the server refuses
-            the default once it runs in production mode.
-          </p>
+          {devCredentials === true && (
+            <p className="hint auth-hint">
+              Development default credentials are <code>stt</code> /{" "}
+              <code>stt</code>. Change them before deploying — the server
+              refuses the default once it runs in production mode.
+            </p>
+          )}
           <p className="hint">
             <Link to="/">Back to the overview</Link>
           </p>

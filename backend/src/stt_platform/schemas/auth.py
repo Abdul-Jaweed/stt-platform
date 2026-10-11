@@ -31,3 +31,15 @@ class SessionInfo(BaseModel):
     tenant: str
     ui_auth_enabled: bool
     expires_at: float | None = None
+
+
+class AuthConfig(BaseModel):
+    """``GET /v1/auth/config`` — what the login page needs to know first.
+
+    Deliberately not a secret: two booleans. ``dev_credentials`` is true only
+    while the *development* defaults would actually work, so a login page can
+    stop advertising credentials a deployment no longer uses.
+    """
+
+    ui_auth_enabled: bool
+    dev_credentials: bool

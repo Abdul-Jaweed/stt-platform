@@ -153,3 +153,21 @@ class SessionTokens:
         if moment >= claims.expires_at:
             raise Unauthorized("your session has expired")
         return claims
+
+
+def uses_development_credentials(settings: object) -> bool:
+    """Would the development defaults work against this configuration?
+
+    True only outside production, with no precomputed hash, and with a weak
+    password (the shipped ``stt``). The UI uses this to decide whether the
+    "development default credentials" hint is honest — showing it on a
+    deployment with generated credentials is both wrong and a small leak.
+
+    Takes ``object`` on purpose: ``core.config`` imports this module, so this
+    module must not import it back.
+    """
+    if getattr(settings, "environment", "local") == "production":
+        return False
+    if getattr(settings, "ui_password_hash", None):
+        return False
+    return is_weak_password(getattr(settings, "ui_password", None))

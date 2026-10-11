@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     deepgram_base_url: str = "https://api.deepgram.com"
     elevenlabs_api_key: str | None = None
     elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    elevenlabs_model_id: str = "scribe_v2"
     sarvam_api_key: str | None = None
     sarvam_base_url: str = "https://api.sarvam.ai"
     provider_timeout_s: float = 300.0

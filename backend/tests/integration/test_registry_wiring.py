@@ -37,3 +37,12 @@ def test_registry_registers_deepgram_when_key_set(tmp_path):
     assert registry.default_id == "faster-whisper"
     deepgram = registry.get("deepgram")
     assert deepgram.is_local is False
+
+
+def test_registry_registers_elevenlabs_when_key_set(tmp_path):
+    registry = build_default_registry(
+        _settings(tmp_path, elevenlabs_api_key="el-test-key")
+    )
+
+    ids = {info.id for info in registry.all()}
+    assert ids == {"faster-whisper", "elevenlabs"}

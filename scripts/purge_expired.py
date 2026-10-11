@@ -49,10 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     settings = get_settings()
 
-    window = args.older_than_days
-    if window is None:
-        window = settings.retention_days
-    if window <= 0:
+    explicit = args.older_than_days is not None
+    window = args.older_than_days if explicit else settings.retention_days
+    if window <= 0 and not explicit:
         print(
             json.dumps(
                 {

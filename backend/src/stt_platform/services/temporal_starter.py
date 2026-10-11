@@ -25,6 +25,8 @@ def retry_config_from_settings(settings: Settings) -> dict:
         "multiplier": settings.retry_multiplier,
         "cap": settings.retry_max_delay_s,
         "jitter_ratio": settings.retry_jitter_ratio,
+        # Bound on a single attempt so a dead worker's job comes back.
+        "attempt_timeout_s": settings.activity_attempt_timeout_s,
     }
 
 

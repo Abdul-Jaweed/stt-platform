@@ -15,7 +15,9 @@ from temporalio.exceptions import ActivityError, CancelledError
 
 from stt_platform.workers.retry import compute_backoff
 
-_ATTEMPT_TIMEOUT = timedelta(hours=4)
+# Default when the dispatcher passes no bound (older payloads). The starter
+# always passes ``attempt_timeout_s`` from settings (Phase 7).
+_DEFAULT_ATTEMPT_TIMEOUT = timedelta(hours=4)
 _POLL_TIMEOUT = timedelta(seconds=120)
 _TRANSITION_TIMEOUT = timedelta(seconds=30)
 _ONE_SHOT = RetryPolicy(maximum_attempts=1)
@@ -32,6 +34,11 @@ class TranscriptionWorkflow:
         poll_interval = float(remote.get("poll_interval_s", 5.0))
         max_wait = float(remote.get("max_wait_s", 7200.0))
         max_attempts = int(retry.get("max_attempts", 3))
+        attempt_timeout = timedelta(
+            seconds=float(
+                retry.get("attempt_timeout_s", _DEFAULT_ATTEMPT_TIMEOUT.total_seconds())
+            )
+        )
         attempt = 0
         try:
             while True:
@@ -40,7 +47,7 @@ class TranscriptionWorkflow:
                     outcome = await workflow.execute_activity(
                         "execute_attempt",
                         args=[job_id, scope, attempt],
-                        start_to_close_timeout=_ATTEMPT_TIMEOUT,
+                        start_to_close_timeout=attempt_timeout,
                         retry_policy=_ONE_SHOT,
                     )
                 except ActivityError as err:

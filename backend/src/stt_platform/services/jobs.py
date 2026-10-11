@@ -360,7 +360,35 @@ class JobService:
 
         provider = self._registry.get(record.requested_provider)
         try:
-            self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
+            if (
+                record.original_object_key is None
+                and self._store is not None
+                and source is not None
+            ):
+                # The first attempt died before the original reached storage —
+                # exactly the failure this retry exists for. Upload it now so a
+                # successful retry restores durability, not just the result.
+                object_key = original_key(scope, job_id, source.suffix)
+                try:
+                    self._store.put_file(
+                        self._store.bucket_audio, object_key, source
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "retry could not store the original for job %s: %s",
+                        job_id,
+                        type(exc).__name__,
+                    )
+                    # No state change: the job stays FAILED and retryable.
+                    return self._repo.get(job_id, scope)
+                self._repo.append_transition(
+                    job_id,
+                    JobStatus.QUEUED,
+                    scope=scope,
+                    original_object_key=object_key,
+                )
+            else:
+                self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
             return self._process(
                 job_id,
                 provider,

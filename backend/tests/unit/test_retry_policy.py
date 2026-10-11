@@ -30,3 +30,17 @@ def test_jitter_scales_with_rand_and_stays_within_bound():
 def test_attempt_must_be_positive():
     with pytest.raises(ValueError):
         _backoff(0)
+
+
+def test_retry_config_carries_the_attempt_timeout():
+    """A dead worker's job must come back in bounded time, not 4 hours."""
+    from stt_platform.core.config import Settings
+    from stt_platform.services.temporal_starter import retry_config_from_settings
+
+    settings = Settings(_env_file=None)
+    assert settings.activity_attempt_timeout_s == 1800
+    config = retry_config_from_settings(settings)
+    assert config["attempt_timeout_s"] == 1800
+    assert retry_config_from_settings(
+        Settings(_env_file=None, activity_attempt_timeout_s=15)
+    )["attempt_timeout_s"] == 15

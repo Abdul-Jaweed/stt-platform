@@ -5,6 +5,7 @@ Cross-tenant access must not even confirm that the object exists.
 """
 from __future__ import annotations
 
+import logging
 import pathlib
 
 import pytest
@@ -280,3 +281,27 @@ def test_the_quota_is_off_by_default(make_client, tmp_path):
             200,
             201,
         )
+
+
+def test_the_api_key_never_reaches_the_logs(make_client, tmp_path, caplog):
+    client = make_client()
+    with caplog.at_level(logging.DEBUG):
+        assert _upload(client, tmp_path, headers={"X-API-Key": ACME}).status_code in (
+            200,
+            201,
+        )
+    assert ACME not in caplog.text
+    assert "x-api-key" not in caplog.text.lower()
+
+
+def test_transcript_text_never_reaches_the_logs(make_client, tmp_path, caplog):
+    """The fake provider returns "hello world"; it must not be in the logs."""
+    client = make_client()
+    with caplog.at_level(logging.DEBUG):
+        job_id = _upload(client, tmp_path, headers={"X-API-Key": ACME}).json()["id"]
+        result = client.get(
+            f"/v1/transcriptions/{job_id}/result", headers={"X-API-Key": ACME}
+        )
+    assert result.status_code == 200
+    assert result.json()["text"] == "hello world"
+    assert "hello world" not in caplog.text

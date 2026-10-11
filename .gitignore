@@ -43,3 +43,6 @@ Desktop.ini
 
 # The owner's own recording: local material, never published.
 my_recording/
+
+# e2e working files (clips, logs) — evidence stays, scratch does not
+results/**/tmp/

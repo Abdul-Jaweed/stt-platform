@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     otel_service_name: str = "stt-platform"
     otel_environment: str = "local"
     otel_sample_ratio: float = 1.0
+    # Recovery bound (Phase 7): how long one provider attempt may run before
+    # Temporal retries it. A worker killed mid-inference recovers in at most
+    # this long instead of the old 4 h; raise it for very long audio.
+    activity_attempt_timeout_s: int = 1800
     # Security (Phase 7). Off by default so the local developer flow keeps
     # working; with it on, every /v1 request must present a key and the
     # key's tenant — never the request — decides the scope.

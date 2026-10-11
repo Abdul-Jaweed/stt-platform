@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -104,10 +105,14 @@ def build_run_payload(
     }
 
 
-def _default_client(tracking_uri: str) -> Any:
+def _default_client(tracking_uri: str, timeout_s: float | None = None) -> Any:
     # Imported lazily so the app never pays for mlflow at startup, and the
     # agent hint it prints on import is silenced (we are not tracing LLMs).
     os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
+    if timeout_s is not None:
+        # A dead tracking server must cost seconds, not a hung request.
+        os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", str(int(timeout_s)))
+        os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
     import mlflow
 
     mlflow.set_tracking_uri(tracking_uri)
@@ -121,34 +126,39 @@ def log_evaluation(
     tracking_uri: str | None = None,
     artifact_dir: Path | None = None,
     experiment_name: str = EXPERIMENT_NAME,
+    timeout_s: float | None = None,
 ) -> dict[str, Any]:
     """Log the evaluation; return a JSON-safe outcome, never raise."""
     payload = build_run_payload(result, experiment_name=experiment_name)
-    directory = Path(artifact_dir) if artifact_dir else None
     try:
-        if directory is not None:
+        if artifact_dir:
+            directory = Path(artifact_dir)
             directory.mkdir(parents=True, exist_ok=True)
-        artifact_path = (directory or Path(".")) / "result.json"
+        else:
+            # The run must carry the full result even when the caller has no
+            # directory to hand: a temp file is uploaded, then left behind.
+            directory = Path(tempfile.mkdtemp(prefix="stt-eval-artifact-"))
+        artifact_path = directory / "result.json"
         artifact_path.write_text(
             json.dumps(result.as_dict(), indent=2), encoding="utf-8"
         )
 
         client = client or _default_client(
-            tracking_uri or DEFAULT_TRACKING_URI
+            tracking_uri or DEFAULT_TRACKING_URI, timeout_s
         )
         client.set_experiment(payload["experiment_name"])
         with client.start_run(run_name=payload["run_name"]) as run:
             client.log_params(payload["params"])
             client.log_metrics(payload["metrics"])
             client.set_tags(payload["tags"])
-            if directory is not None:
-                client.log_artifact(str(artifact_path))
+            client.log_artifact(str(artifact_path))
             run_id = run.info.run_id
         return {
             "status": "logged",
             "run_id": run_id,
             "run_name": payload["run_name"],
             "experiment": payload["experiment_name"],
+            "tracking_uri": tracking_uri or DEFAULT_TRACKING_URI,
             "metrics_logged": sorted(payload["metrics"]),
         }
     except Exception as exc:  # a dead tracking server is not a failed evaluation

@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     otel_service_name: str = "stt-platform"
     otel_environment: str = "local"
     otel_sample_ratio: float = 1.0
+    # Evaluation (Phase 6): where datasets and their audio live, how large a
+    # run may be, and where MLflow keeps the record of it. MLflow logging is
+    # best-effort and time-bounded: a dead tracking server downgrades the
+    # evaluation's ``mlflow`` field to an error, never the evaluation itself.
+    evaluation_datasets_dir: Path | None = None
+    evaluation_audio_root: Path | None = None
+    evaluation_max_clips: int = 25
+    mlflow_enabled: bool = True
+    mlflow_tracking_uri: str = "http://127.0.0.1:5000"
+    mlflow_experiment: str = "stt-evaluation"
+    mlflow_timeout_s: float = 10.0
     # Runtime sampler interval for CPU/RSS/GPU/queue gauges.
     runtime_sample_interval_s: float = 15.0
     # Logs: plain text by default (readable locally); "json" switches the

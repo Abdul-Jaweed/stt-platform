@@ -53,6 +53,18 @@ behind the same contract), plus a separate React + TypeScript frontend.
   registry. **Off by default and never fatal.** Verified: real-stack e2e
   with two processes, one job, RTF 0.094 (`results/phase5_e2e/`). See
   `docs/phase-5-report.md`, `docs/observability.md`.
+- **Phase 6 complete** — evaluation against reference data: a versioned
+  dataset manifest with honest provenance (synthetic ground truth scored,
+  unverified human audio excluded), WER/CER with a recorded normalization
+  pipeline cross-checked against `jiwer`, timestamp quality (availability,
+  boundary error, coverage, monotonicity), the full operational picture per
+  clip (queue wait, processing, RTF, retries, failures) measured on the real
+  job path, MLflow tracking (docker compose, one run per dataset × provider ×
+  config, result artifact attached) that is best-effort by contract, plus
+  `/v1/evaluations` and a comparison table in the frontend. Measured
+  baseline: `large-v3-turbo` WER 0.100 micro / 0.118 macro, CER 0.095,
+  RTF 0.072, word timestamps 100% (`results/phase6_gpu_eval.json`). See
+  `docs/phase-6-report.md`, `docs/evaluation.md`.
 
 ## Repository layout
 
@@ -124,4 +136,6 @@ npm run dev            # http://localhost:5173 (API base: VITE_API_BASE_URL)
 - `docs/phase-4-report.md` — managed providers: evidence, limitations
 - `docs/observability.md` — traces, logs, metric catalog, dashboard, alerts
 - `docs/phase-5-report.md` — observability: evidence, limitations
+- `docs/evaluation.md` — datasets, metrics, normalization, MLflow, API, limits
+- `docs/phase-6-report.md` — evaluation: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

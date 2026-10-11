@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -214,3 +215,23 @@ def load_dataset(
         missing_audio=tuple(sorted(missing)),
         path=manifest_path,
     )
+
+
+def datasets_dir(configured: Path | None = None) -> Path:
+    """Where manifests live: settings first, then the packaged directory."""
+    return Path(configured) if configured else DATASETS_DIR
+
+
+def dataset_path(dataset_id: str, *, directory: Path | None = None) -> Path:
+    """Resolve a dataset id to its manifest path (no traversal)."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "", dataset_id or "")
+    if not safe or safe != dataset_id:
+        raise DatasetError(f"invalid dataset id: {dataset_id!r}")
+    return datasets_dir(directory) / f"{safe}.json"
+
+
+def available_datasets(*, directory: Path | None = None) -> list[str]:
+    root = datasets_dir(directory)
+    if not root.is_dir():
+        return []
+    return sorted(path.stem for path in root.glob("*.json"))

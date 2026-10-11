@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from stt_platform.evaluation.datasets import Clip, Dataset
@@ -144,6 +145,20 @@ def _group_summary(results: list[ClipResult]) -> dict[str, Any]:
     }
 
 
+def sha256_of(path: Path) -> str | None:
+    """Hash the exact bytes that were scored (provenance, not decoration)."""
+    import hashlib
+
+    try:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
 def _aggregate(clips: list[ClipResult]) -> dict[str, Any]:
     scored = [item for item in clips if item.accuracy is not None]
     summary = dict(aggregate_scores([item.accuracy for item in scored if item.accuracy]))
@@ -253,7 +268,7 @@ def run_evaluation(
                     status="failed",
                     provider=provider,
                     model=model,
-                    audio_sha256=clip.sha256,
+                    audio_sha256=sha256_of(clip.audio) or clip.sha256,
                     transcript_text=None,
                     accuracy=None,
                     timestamps=None,
@@ -278,7 +293,7 @@ def run_evaluation(
                 status="scored",
                 provider=outcome.provider,
                 model=outcome.model or model,
-                audio_sha256=clip.sha256,
+                audio_sha256=sha256_of(clip.audio) or clip.sha256,
                 transcript_text=outcome.text,
                 accuracy=accuracy,
                 timestamps=timestamps,
@@ -291,6 +306,9 @@ def run_evaluation(
 
     scored_ids = {clip.clip_id for clip in scored_clips}
     finished = time.time()
+    # The provider that actually ran is what the record must name; the
+    # requested model is only a fallback when a provider reports none.
+    model = model or next((clip.model for clip in results if clip.model), None)
     return EvaluationResult(
         dataset_id=dataset.dataset_id,
         dataset_version=dataset.version,

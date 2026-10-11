@@ -74,7 +74,8 @@ class PlatformTranscriber:
             attempts=record.attempt_count,
             retries=max(0, record.attempt_count - 1),
             provider=record.actual_provider or record.requested_provider or "unknown",
-            model=record.model,
+            # The provider's own report wins over the request hint.
+            model=record.model or getattr(result, "model", None),
         )
 
 

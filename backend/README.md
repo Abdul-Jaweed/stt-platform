@@ -71,6 +71,8 @@ uv run python ../scripts/e2e_phase2.py   # 202 → worker → SUCCEEDED, presign
                                          # cancel, worker-restart recovery
 uv run python ../scripts/e2e_phase5.py   # observability on: spans, JSON logs,
                                          # /metrics in API *and* worker
+uv run python ../scripts/e2e_phase6.py   # corpus → evaluation → WER/CER →
+                                         # MLflow run, read back
 ```
 
 The Phase-5 driver starts both processes with `STT_OTEL_ENABLED=true`,

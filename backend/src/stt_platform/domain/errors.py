@@ -89,3 +89,34 @@ class InvalidRequest(DomainError):
 
     def __init__(self, message: str):
         super().__init__("VALIDATION_ERROR", message)
+
+
+class DatasetNotFound(DomainError):
+    """No such reference dataset manifest."""
+
+    def __init__(self, dataset_id: str, available: list[str] | None = None) -> None:
+        hint = f"; available: {', '.join(sorted(available))}" if available else ""
+        super().__init__("DATASET_NOT_FOUND", f"unknown dataset: {dataset_id}{hint}")
+
+
+class DatasetNotReady(DomainError):
+    """The manifest exists but its audio has not been generated."""
+
+    def __init__(self, missing: list[str]) -> None:
+        super().__init__(
+            "DATASET_NOT_READY",
+            "audio missing for "
+            f"{len(missing)} clip(s): {', '.join(sorted(missing)[:5])}"
+            "; run scripts/make_eval_corpus.py",
+        )
+
+
+class EvaluationTooLarge(DomainError):
+    """A synchronous evaluation has a hard size cap."""
+
+    def __init__(self, clips: int, limit: int) -> None:
+        super().__init__(
+            "EVALUATION_TOO_LARGE",
+            f"dataset has {clips} scored clips; the limit is {limit} "
+            "(raise STT_EVALUATION_MAX_CLIPS to run more)",
+        )

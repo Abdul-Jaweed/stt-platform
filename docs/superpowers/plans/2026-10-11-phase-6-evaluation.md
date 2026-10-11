@@ -1,4 +1,6 @@
-# Phase 6 — Evaluation (MLflow, reference datasets, WER/CER, comparison)
+# Phase 6
+
+Status: **complete** (T1–T8) — Evaluation (MLflow, reference datasets, WER/CER, comparison)
 
 Spec: `IDEA.md` §"MLflow and evaluation" — versioned dataset with stable
 audio IDs and human-verified reference transcripts; measure WER/CER,

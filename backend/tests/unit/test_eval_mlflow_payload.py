@@ -160,6 +160,8 @@ def test_logging_sends_everything_and_reports_the_run_id(tmp_path):
 
     assert outcome["status"] == "logged"
     assert outcome["run_id"] == "run-123"
+    # The UI needs to know where to look the run up.
+    assert outcome["tracking_uri"] == "http://127.0.0.1:5000"
     assert client.experiment == "stt-evaluation"
     assert client.params["provider"] == "fake"
     assert client.metrics["wer_micro"] == 0.0

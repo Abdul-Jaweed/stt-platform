@@ -1,6 +1,8 @@
 import { ApiError, normalizeError } from "./errors";
 import type {
+  EvaluationList,
   EvaluationRecord,
+  EvaluationRequest,
   JobRecord,
   ProviderInfo,
   TranscriptResult,
@@ -30,6 +32,8 @@ export interface ApiClient {
   getProviders(): Promise<ProviderInfo[]>;
   getHealth(): Promise<{ status: string }>;
   getEvaluation(id: string): Promise<EvaluationRecord>;
+  listEvaluations(): Promise<EvaluationList>;
+  createEvaluation(input: EvaluationRequest): Promise<EvaluationRecord>;
 }
 
 async function readBody(response: Response): Promise<unknown> {
@@ -66,6 +70,17 @@ export function createApiClient(baseUrl: string): ApiClient {
 
   async function post<T>(path: string): Promise<T> {
     const response = await call(path, { method: "POST" });
+    const body = await readBody(response);
+    if (!response.ok) throw normalizeError(response.status, body);
+    return body as T;
+  }
+
+  async function postJson<T>(path: string, payload: unknown): Promise<T> {
+    const response = await call(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
     const body = await readBody(response);
     if (!response.ok) throw normalizeError(response.status, body);
     return body as T;
@@ -110,5 +125,10 @@ export function createApiClient(baseUrl: string): ApiClient {
 
     getEvaluation: (id) =>
       get<EvaluationRecord>(`/v1/evaluations/${encodeURIComponent(id)}`),
+
+    listEvaluations: () => get<EvaluationList>("/v1/evaluations"),
+
+    createEvaluation: (input) =>
+      postJson<EvaluationRecord>("/v1/evaluations", input),
   };
 }

@@ -118,7 +118,77 @@ export interface ProviderInfo {
 }
 
 /** Phase 6 contract — the endpoint does not exist yet (honest 404). */
+export interface EvaluationClipSummary {
+  clip_id: string;
+  status: string;
+  provider: string;
+  model: string | null;
+  audio_sha256: string | null;
+  wer: number | null;
+  cer: number | null;
+  word_errors: Record<string, number>;
+  char_errors: Record<string, number>;
+  timings: Record<string, number | null>;
+  timestamps: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface MlflowOutcome {
+  status: "logged" | "error" | "disabled" | "skipped";
+  run_id?: string;
+  run_name?: string;
+  experiment?: string;
+  tracking_uri?: string;
+  reason?: string;
+  metrics_logged?: string[];
+}
+
 export interface EvaluationRecord {
   evaluation_id: string;
-  [key: string]: unknown;
+  dataset_id: string;
+  dataset_version: string;
+  provider: string;
+  model: string | null;
+  status: string;
+  decoding: Record<string, unknown>;
+  normalization: Record<string, unknown>;
+  aggregate: Record<string, number | null>;
+  by_group: Record<string, Record<string, Record<string, number | null>>>;
+  insufficient_evidence: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_s: number;
+  mlflow: MlflowOutcome | null;
+  artifact_key: string | null;
+  clips: EvaluationClipSummary[];
+}
+
+export interface EvaluationComparisonRow {
+  evaluation_id: string;
+  provider: string;
+  model: string | null;
+  dataset_id: string;
+  dataset_version: string;
+  clips_scored: number;
+  clips_total: number;
+  wer_micro: number | null;
+  wer_macro: number | null;
+  cer_micro: number | null;
+  rtf_mean: number | null;
+  failures: number;
+  segment_availability_mean: number | null;
+  word_availability_mean: number | null;
+  insufficient_evidence: boolean;
+  started_at: string | null;
+}
+
+export interface EvaluationList {
+  evaluations: EvaluationComparisonRow[];
+  count: number;
+}
+
+export interface EvaluationRequest {
+  dataset_id: string;
+  provider?: string;
+  language?: string;
 }

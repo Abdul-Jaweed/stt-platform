@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from stt_platform.domain.errors import (
     AudioTooLong,
     AudioValidationError,
+    DatasetNotFound,
+    DatasetNotReady,
+    EvaluationTooLarge,
     IdempotencyConflict,
     InvalidObjectKey,
     InvalidRequest,
@@ -25,9 +28,12 @@ from stt_platform.domain.errors import (
     StorageNotConfigured,
     UploadTooLarge,
 )
+from stt_platform.persistence.evaluations import EvaluationNotFound
 
 ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     AudioValidationError: (415, "UNSUPPORTED_MEDIA"),
+    DatasetNotFound: (404, "DATASET_NOT_FOUND"),
+    DatasetNotReady: (409, "DATASET_NOT_READY"),
     UploadTooLarge: (413, "UPLOAD_TOO_LARGE"),
     AudioTooLong: (422, "AUDIO_TOO_LONG"),
     ProviderNotFound: (422, "PROVIDER_NOT_FOUND"),
@@ -39,6 +45,8 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     StorageNotConfigured: (503, "STORAGE_NOT_CONFIGURED"),
     InvalidObjectKey: (422, "INVALID_OBJECT_KEY"),
     InvalidRequest: (422, "VALIDATION_ERROR"),
+    EvaluationTooLarge: (422, "EVALUATION_TOO_LARGE"),
+    EvaluationNotFound: (404, "EVALUATION_NOT_FOUND"),
 }
 
 

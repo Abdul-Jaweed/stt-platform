@@ -47,11 +47,12 @@ def test_activity_span_records_attributes_and_errors():
     exporter = InMemorySpanExporter()
     tracing.setup_tracing(_settings(otel_enabled=True), span_exporter=exporter)
 
-    with pytest.raises(RuntimeError):
-        with activity_span("stt.attempt", {"stt.job_id": "job-1"}) as span:
-            assert span is not None
-            span.set_attribute("stt.outcome", "transient")
-            raise RuntimeError("boom")
+    with pytest.raises(RuntimeError), activity_span(
+        "stt.attempt", {"stt.job_id": "job-1"}
+    ) as span:
+        assert span is not None
+        span.set_attribute("stt.outcome", "transient")
+        raise RuntimeError("boom")
 
     (exported,) = exporter.get_finished_spans()
     assert exported.name == "stt.attempt"

@@ -76,7 +76,9 @@ export default function ProvidersPage() {
             <tr key={provider.id}>
               <td>
                 {provider.name}
-                {provider.is_local ? " (local)" : ""}
+                {provider.is_local && !/\(local\)/i.test(provider.name)
+                  ? " (local)"
+                  : ""}
               </td>
               <td>{provider.health.status}</td>
               <td>{provider.capabilities.languages.length}</td>

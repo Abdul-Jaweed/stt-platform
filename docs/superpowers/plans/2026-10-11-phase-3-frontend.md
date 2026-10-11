@@ -41,8 +41,8 @@
 
 **Interfaces (produces):** `npm test` (vitest run) and `npm run build` (tsc -b && vite build) work; `App` renders an app shell with heading "STT Platform".
 
-- [ ] **Step 1:** write `package.json` with scripts (`dev`, `build`, `test`, `test:watch`, `preview`) and deps: `react`, `react-dom`, `react-router-dom`; devDeps: `typescript`, `vite`, `@vitejs/plugin-react`, `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `msw`. `npm install` → commit `package-lock.json`.
-- [ ] **Step 2:** write `App.test.tsx`:
+- [x] **Step 1:** write `package.json` with scripts (`dev`, `build`, `test`, `test:watch`, `preview`) and deps: `react`, `react-dom`, `react-router-dom`; devDeps: `typescript`, `vite`, `@vitejs/plugin-react`, `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `msw`. `npm install` → commit `package-lock.json`.
+- [x] **Step 2:** write `App.test.tsx`:
 
 ```tsx
 import { render, screen } from "@testing-library/react";
@@ -54,8 +54,8 @@ test("renders the app shell", () => {
 });
 ```
 
-- [ ] **Step 3:** `npm test` → FAIL (no App / no test setup). Write `vite.config.ts` (react plugin, `test: { environment: "jsdom", setupFiles: "./src/test/setup.ts", globals: true }`), `tsconfig.json` (strict), `index.html`, `src/test/setup.ts` (`import "@testing-library/jest-dom/vitest"`), minimal `App.tsx`.
-- [ ] **Step 4:** `npm test` → PASS; `npm run build` → PASS. Commit `feat(frontend): vite + react + ts scaffold with vitest (T1)`.
+- [x] **Step 3:** `npm test` → FAIL (no App / no test setup). Write `vite.config.ts` (react plugin, `test: { environment: "jsdom", setupFiles: "./src/test/setup.ts", globals: true }`), `tsconfig.json` (strict), `index.html`, `src/test/setup.ts` (`import "@testing-library/jest-dom/vitest"`), minimal `App.tsx`.
+- [x] **Step 4:** `npm test` → PASS; `npm run build` → PASS. Commit `feat(frontend): vite + react + ts scaffold with vitest (T1)`.
 
 ### Task 2: Typed API client + error normalization
 
@@ -77,7 +77,7 @@ test("network failure becomes ApiError with code NETWORK_ERROR")
 test("getEvaluation surfaces 404 as a typed not_found")
 ```
 
-- [ ] Steps: write tests → RED (`npm test` fails on missing modules) → implement → GREEN → commit `feat(frontend): typed api client and error normalization (T2)`.
+- [x] Steps: write tests → RED (`npm test` fails on missing modules) → implement → GREEN → commit `feat(frontend): typed api client and error normalization (T2)`.
 
 ### Task 3: Upload form with provider/language selection
 
@@ -95,7 +95,7 @@ test("renders validation errors from the backend (415 UNSUPPORTED_MEDIA)")
 test("renders provider list failure with retry affordance")
 ```
 
-- [ ] Steps as usual; commit `feat(frontend): upload form with provider and language selection (T3)`.
+- [x] Steps as usual; commit `feat(frontend): upload form with provider and language selection (T3)`.
 
 ### Task 4: Job page — polling, status, cancel/retry
 
@@ -117,7 +117,7 @@ test("unknown job (404) renders a not-found state")
 test("recent jobs index survives corrupt localStorage")
 ```
 
-- [ ] Steps as usual; commit `feat(frontend): job page with polling, cancel and retry (T4)`.
+- [x] Steps as usual; commit `feat(frontend): job page with polling, cancel and retry (T4)`.
 
 ### Task 5: Transcript viewer — timestamps, synced playback, downloads
 
@@ -139,7 +139,7 @@ test("active segment highlights as playback advances")
 test("500-segment transcript renders and stays interactive")
 ```
 
-- [ ] Steps as usual; commit `feat(frontend): transcript viewer with synced playback and exports (T5)`.
+- [x] Steps as usual; commit `feat(frontend): transcript viewer with synced playback and exports (T5)`.
 
 ### Task 6: Providers page + evaluations placeholder + app shell polish
 
@@ -156,7 +156,7 @@ test("evaluations view explains the phase-6 gap on 404")
 test("unknown route renders not-found")
 ```
 
-- [ ] Steps as usual; commit `feat(frontend): providers, evaluations placeholder, app shell (T6)`.
+- [x] Steps as usual; commit `feat(frontend): providers, evaluations placeholder, app shell (T6)`.
 
 ### Task 7: Styling, build, live e2e against the real backend, docs
 
@@ -165,10 +165,10 @@ test("unknown route renders not-found")
 - Modify: `README.md` (frontend quickstart + status), `.gitignore` if needed
 
 **Steps:**
-- [ ] **Step 1:** minimal dark stylesheet (system font stack, readable tables, status colors; no CSS framework).
-- [ ] **Step 2:** gates: `npm test` (all suites) + `npm run build`; backend gates re-run (`uv run pytest -q`, `-m gpu`).
-- [ ] **Step 3 — live e2e:** `scripts/e2e_phase3_frontend.py`: starts backend (uvicorn :8200) + `npm run preview` (built app :4173) with `VITE_API_BASE_URL=http://127.0.0.1:8200`, then drives the real UI (browser automation available to the executor): upload `audio/sample.wav` → 201 → transcript text visible; assert SRT download content; write `results/phase3_e2e/result.json`.
-- [ ] **Step 4:** `docs/phase-3-report.md` (per-phase format), README updates, tick plan; commit `docs(frontend): phase 3 report and run documentation (T7)`.
+- [x] **Step 1:** minimal dark stylesheet (system font stack, readable tables, status colors; no CSS framework).
+- [x] **Step 2:** gates: `npm test` (all suites) + `npm run build`; backend gates re-run (`uv run pytest -q`, `-m gpu`).
+- [x] **Step 3 — live e2e:** `scripts/e2e_phase3_frontend.py`: starts backend (uvicorn :8200) + `npm run preview` (built app :4173) with `VITE_API_BASE_URL=http://127.0.0.1:8200`, then drives the real UI (browser automation available to the executor): upload `audio/sample.wav` → 201 → transcript text visible; assert SRT download content; write `results/phase3_e2e/result.json`.
+- [x] **Step 4:** `docs/phase-3-report.md` (per-phase format), README updates, tick plan; commit `docs(frontend): phase 3 report and run documentation (T7)`.
 
 ## Self-review
 

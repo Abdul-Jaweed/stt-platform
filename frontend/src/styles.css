@@ -1,12 +1,282 @@
 :root {
   color-scheme: dark;
+  --bg: #14161a;
+  --surface: #1d2026;
+  --border: #2c313a;
+  --text: #e6e9ee;
+  --muted: #9aa3b2;
+  --accent: #5b9dff;
+  --ok: #3fb96b;
+  --warn: #d9a13b;
+  --error: #e05d5d;
+  --info: #4aa8d8;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.app-header nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.app-header nav a.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.2rem;
+}
+
+.field {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 30rem;
+}
+
+.field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+input[type="text"],
+select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+}
+
+button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button[type="submit"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1220;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  background: rgba(224, 93, 93, 0.08);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.badge-ok {
+  background: rgba(63, 185, 107, 0.15);
+  color: var(--ok);
+}
+
+.badge-error {
+  background: rgba(224, 93, 93, 0.15);
+  color: var(--error);
+}
+
+.badge-warn {
+  background: rgba(217, 161, 59, 0.15);
+  color: var(--warn);
+}
+
+.badge-info {
+  background: rgba(74, 168, 216, 0.15);
+  color: var(--info);
+}
+
+.badge-neutral {
+  background: rgba(154, 163, 178, 0.15);
+  color: var(--muted);
+}
+
+.badge-muted {
+  background: rgba(154, 163, 178, 0.1);
+  color: var(--muted);
+}
+
+.job-meta {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.25rem 1rem;
+  margin: 1rem 0;
+}
+
+.job-meta dt {
+  color: var(--muted);
+}
+
+.job-meta dd {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.actions a {
+  color: var(--accent);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+audio {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.transcript {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.segment {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+}
+
+.segment.active {
+  background: rgba(91, 157, 255, 0.12);
+}
+
+.segment-time {
+  align-self: start;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: none;
+  padding: 0.1rem 0;
+  text-align: left;
+}
+
+.segment-text {
+  margin: 0;
+}
+
+.words {
+  grid-column: 2;
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.word button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.05rem 0.25rem;
+}
+
+.word.active button {
+  color: var(--text);
+  background: rgba(91, 157, 255, 0.2);
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.8rem;
+  overflow-x: auto;
 }

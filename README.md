@@ -23,15 +23,21 @@ phases), plus a separate React + TypeScript frontend.
   restarts. Verified: full test suite + real-stack e2e
   (`scripts/e2e_phase2.py`). See `docs/phase-2-report.md`,
   `docs/reliability.md`.
+- **Phase 3 complete** — separate React + TypeScript frontend: upload with
+  provider/language selection, polling job page with cancel/retry,
+  timestamped transcript with synced playback and TXT/SRT/VTT exports,
+  provider capability table. Verified: 44 frontend tests + real-browser
+  e2e against the live stack (`results/phase3_e2e/result.json`). See
+  `docs/phase-3-report.md`, `frontend/README.md`.
 
 ## Repository layout
 
 | Path | Purpose |
 |---|---|
 | `backend/` | Headless FastAPI service + Temporal worker (uv, Python 3.13) |
-| `frontend/` | Independent React + TypeScript + Vite app *(Phase 3)* |
+| `frontend/` | Independent React + TypeScript + Vite app (consumes only `/v1`) |
 | `infrastructure/` | Docker Compose: PostgreSQL, RustFS, Temporal, Temporal UI |
-| `scripts/` | e2e drivers (`e2e_phase2.py`) |
+| `scripts/` | e2e drivers (`e2e_phase2.py`, `e2e_phase3_frontend.py`) |
 | `docs/` | Architecture, reports, plans |
 | `models/` | Model caches on the I: drive — never committed |
 | `.cache/` | uv / torch / NeMo caches — never committed |
@@ -71,6 +77,14 @@ answers 202 `QUEUED` and is processed by the worker):
 curl -s -F "file=@audio/sample.wav" http://127.0.0.1:8200/v1/transcriptions
 ```
 
+Frontend (separate app; consumes only `/v1` — see `frontend/README.md`):
+
+```bash
+cd frontend
+npm install
+npm run dev            # http://localhost:5173 (API base: VITE_API_BASE_URL)
+```
+
 ## Documentation
 
 - `docs/architecture.md` — architecture, decisions (ADR log), ports
@@ -80,4 +94,5 @@ curl -s -F "file=@audio/sample.wav" http://127.0.0.1:8200/v1/transcriptions
 - `docs/phase-0-report.md` — inspection report, reuse map, risks
 - `docs/phase-1-report.md` — what Phase 1 shipped, evidence, limitations
 - `docs/phase-2-report.md` — durable processing: evidence, limitations
+- `docs/phase-3-report.md` — frontend: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

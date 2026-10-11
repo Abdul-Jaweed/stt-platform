@@ -115,7 +115,7 @@ export default function UploadPage() {
                 {providers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
-                    {p.is_local ? " (local)" : ""}
+                    {p.is_local && !/\(local\)/i.test(p.name) ? " (local)" : ""}
                   </option>
                 ))}
               </select>
@@ -124,7 +124,9 @@ export default function UploadPage() {
           {providers !== null && providers.length === 1 && (
             <p className="hint">
               Provider: {providers[0].name}
-              {providers[0].is_local ? " (local)" : ""}
+              {providers[0].is_local && !/\(local\)/i.test(providers[0].name)
+                ? " (local)"
+                : ""}
             </p>
           )}
         </div>

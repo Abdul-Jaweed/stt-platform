@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from stt_platform.api.errors import register_exception_handlers
+from stt_platform.api.ratelimit import SlidingWindowLimiter
 from stt_platform.api.v1 import evaluations, health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.observability import metrics, runtime, tracing
@@ -48,6 +49,7 @@ def create_app(
         allow_credentials=False,
     )
     app.state.settings = settings
+    app.state.rate_limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
     app.state.registry = registry
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)

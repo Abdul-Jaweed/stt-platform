@@ -55,6 +55,7 @@ from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.jobs import JobFailure, JobRecord
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.dispatch import dispatch_pending, workflow_id_for
+from stt_platform.services.retention import TERMINAL_STATUSES, delete_job_objects
 from stt_platform.storage.keys import artifact_key, is_original_key, original_key
 from stt_platform.storage.s3 import S3ObjectStore
 
@@ -371,6 +372,25 @@ class JobService:
         finally:
             if downloaded is not None:
                 downloaded.unlink(missing_ok=True)
+
+    def delete(self, job_id: str, scope: str = "local") -> None:
+        """Delete a job and everything the platform stored for it.
+
+        A job that is still in flight is cancelled first, so no workflow keeps
+        writing transitions for a row that no longer exists (an illegal
+        transition is already a logged no-op).
+        """
+        record = self._repo.get(job_id, scope)
+        if record.status not in TERMINAL_STATUSES:
+            self.cancel(job_id, scope)
+        delete_job_objects(
+            self._store,
+            scope=scope,
+            job_id=job_id,
+            original_object_key=record.original_object_key,
+            audio_path=record.audio_path,
+        )
+        self._repo.delete(job_id, scope)
 
     def get(self, job_id: str, scope: str = "local") -> JobRecord:
         return self._repo.get(job_id, scope)

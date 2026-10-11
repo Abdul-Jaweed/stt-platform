@@ -25,7 +25,9 @@ from stt_platform.domain.errors import (
     JobNotReady,
     ProviderError,
     ProviderNotFound,
+    RateLimited,
     StorageNotConfigured,
+    Unauthorized,
     UploadTooLarge,
 )
 from stt_platform.persistence.evaluations import EvaluationNotFound
@@ -47,6 +49,8 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     InvalidRequest: (422, "VALIDATION_ERROR"),
     EvaluationTooLarge: (422, "EVALUATION_TOO_LARGE"),
     EvaluationNotFound: (404, "EVALUATION_NOT_FOUND"),
+    Unauthorized: (401, "UNAUTHORIZED"),
+    RateLimited: (429, "RATE_LIMITED"),
 }
 
 

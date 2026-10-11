@@ -1,7 +1,11 @@
 """Provider discovery endpoint."""
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
-router = APIRouter(prefix="/providers", tags=["providers"])
+from stt_platform.api.security import get_scope
+
+router = APIRouter(
+    prefix="/providers", tags=["providers"], dependencies=[Depends(get_scope)]
+)
 
 
 @router.get("")

@@ -155,6 +155,16 @@ class JobRepository:
     def get(self, job_id: str, scope: str = "local") -> JobRecord:
         return self._to_record(self._get_row(job_id, scope))
 
+    def delete(self, job_id: str, scope: str = "local") -> None:
+        """Delete the job row; the database cascades transitions/attempts/outbox.
+
+        Commits like every other write path here: the request session is
+        closed, never committed, by the API layer.
+        """
+        row = self._get_row(job_id, scope)
+        self._session.delete(row)
+        self._session.commit()
+
     def find_by_idempotency(self, scope: str, key: str) -> JobRecord | None:
         row = self._session.execute(
             select(JobRow).where(

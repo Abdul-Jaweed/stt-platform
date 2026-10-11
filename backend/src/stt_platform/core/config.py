@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     otel_service_name: str = "stt-platform"
     otel_environment: str = "local"
     otel_sample_ratio: float = 1.0
+    # Security (Phase 7). Off by default so the local developer flow keeps
+    # working; with it on, every /v1 request must present a key and the
+    # key's tenant — never the request — decides the scope.
+    auth_enabled: bool = False
+    api_keys: str = ""
+    max_requests_per_minute: int = 0
+    retention_days: int = 0
     # Evaluation (Phase 6): where datasets and their audio live, how large a
     # run may be, and where MLflow keeps the record of it. MLflow logging is
     # best-effort and time-bounded: a dead tracking server downgrades the

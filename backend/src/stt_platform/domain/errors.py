@@ -120,3 +120,18 @@ class EvaluationTooLarge(DomainError):
             f"dataset has {clips} scored clips; the limit is {limit} "
             "(raise STT_EVALUATION_MAX_CLIPS to run more)",
         )
+
+
+class Unauthorized(DomainError):
+    """Missing or invalid credentials (fail closed, never open)."""
+
+    def __init__(self, message: str = "a valid X-API-Key header is required") -> None:
+        super().__init__("UNAUTHORIZED", message)
+
+
+class RateLimited(DomainError):
+    """A caller exceeded its request quota."""
+
+    def __init__(self, message: str, retry_after_s: int = 60) -> None:
+        super().__init__("RATE_LIMITED", message)
+        self.retry_after_s = retry_after_s

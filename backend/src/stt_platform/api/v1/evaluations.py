@@ -13,6 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from stt_platform.api.deps import get_service, get_session
+from stt_platform.api.security import get_scope
 from stt_platform.domain.errors import (
     DatasetNotFound,
     DatasetNotReady,
@@ -35,7 +36,9 @@ from stt_platform.schemas.evaluations import (
 )
 from stt_platform.services.jobs import JobService
 
-router = APIRouter(prefix="/evaluations", tags=["evaluations"])
+router = APIRouter(
+    prefix="/evaluations", tags=["evaluations"], dependencies=[Depends(get_scope)]
+)
 
 
 def _resolve_dataset(payload: EvaluationRequest, settings):

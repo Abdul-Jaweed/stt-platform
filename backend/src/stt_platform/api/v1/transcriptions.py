@@ -26,6 +26,8 @@ from fastapi import (
 )
 
 from stt_platform.api.deps import get_service
+from stt_platform.api.ratelimit import enforce_rate_limit
+from stt_platform.api.security import get_scope
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import (
@@ -40,27 +42,28 @@ from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.jobs import JobService
 from stt_platform.storage.keys import original_key
 
-router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
+router = APIRouter(
+    prefix="/transcriptions",
+    tags=["transcriptions"],
+    dependencies=[Depends(enforce_rate_limit)],
+)
 
 _CHUNK_BYTES = 1024 * 1024
 # Multipart framing overhead allowance for the Content-Length pre-check.
 _CONTENT_LENGTH_SLACK_BYTES = 64 * 1024
-# Scope is server-assigned; the auth layer will bind real tenant scopes.
-_PRESIGN_SCOPE = "local"
 
 
 @router.post("/uploads/presign", response_model=PresignedUpload)
 def presign_upload(
     body: PresignRequest,
     request: Request,
+    scope: str = Depends(get_scope),
 ) -> PresignedUpload:
     store = getattr(request.app.state, "store", None)
     if store is None:
         raise StorageNotConfigured("presigned uploads require object storage")
     settings: Settings = request.app.state.settings
-    key = original_key(
-        _PRESIGN_SCOPE, uuid.uuid4().hex, Path(body.filename or "").suffix
-    )
+    key = original_key(scope, uuid.uuid4().hex, Path(body.filename or "").suffix)
     url = store.presign_put(
         store.bucket_audio, key, expires_s=settings.presign_expiry_s
     )
@@ -81,6 +84,7 @@ def create_transcription(
     language: str | None = Form(None),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
 ) -> JobRecord:
     settings: Settings = request.app.state.settings
     store = getattr(request.app.state, "store", None)
@@ -94,6 +98,7 @@ def create_transcription(
             provider_id=provider or None,
             language=language or None,
             idempotency_key=idempotency_key or None,
+            scope=scope,
         )
         response.status_code = 202
         response.headers["Location"] = f"/v1/transcriptions/{job.id}"
@@ -166,6 +171,7 @@ def create_transcription(
                 provider_id=provider or None,
                 language=language or None,
                 idempotency_key=idempotency_key or None,
+                scope=scope,
             )
         finally:
             # The object-storage copy is canonical for asynchronous jobs.
@@ -177,6 +183,7 @@ def create_transcription(
             provider_id=provider or None,
             language=language or None,
             idempotency_key=idempotency_key or None,
+            scope=scope,
         )
     response.headers["Location"] = f"/v1/transcriptions/{job.id}"
     return job
@@ -184,31 +191,50 @@ def create_transcription(
 
 @router.get("/{job_id}", response_model=JobRecord)
 def get_transcription(
-    job_id: str, service: JobService = Depends(get_service)
+    job_id: str,
+    service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
 ) -> JobRecord:
-    return service.get(job_id)
+    return service.get(job_id, scope)
 
 
 @router.get("/{job_id}/result", response_model=TranscriptResult)
 def get_transcription_result(
-    job_id: str, service: JobService = Depends(get_service)
+    job_id: str,
+    service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
 ) -> TranscriptResult:
-    return service.get_result(job_id)
+    return service.get_result(job_id, scope)
 
 
 @router.post("/{job_id}/retry", response_model=JobRecord)
 def retry_transcription(
-    job_id: str, service: JobService = Depends(get_service)
+    job_id: str,
+    service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
 ) -> JobRecord:
-    record = service.get(job_id)
+    record = service.get(job_id, scope)
     local = bool(record.audio_path) and Path(record.audio_path).is_file()
     if record.original_object_key and not local:
-        return service.retry_async(job_id)
-    return service.retry(job_id)
+        return service.retry_async(job_id, scope)
+    return service.retry(job_id, scope)
 
 
 @router.post("/{job_id}/cancel", response_model=JobRecord)
 def cancel_transcription(
-    job_id: str, service: JobService = Depends(get_service)
+    job_id: str,
+    service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
 ) -> JobRecord:
-    return service.cancel(job_id)
+    return service.cancel(job_id, scope)
+
+
+@router.delete("/{job_id}", status_code=204)
+def delete_transcription(
+    job_id: str,
+    service: JobService = Depends(get_service),
+    scope: str = Depends(get_scope),
+) -> Response:
+    """Delete a job and everything stored for it (objects, then rows)."""
+    service.delete(job_id, scope)
+    return Response(status_code=204)

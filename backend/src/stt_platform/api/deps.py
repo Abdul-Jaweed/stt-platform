@@ -15,6 +15,7 @@ def get_service(request: Request) -> Iterator[JobService]:
             JobRepository(session),
             request.app.state.registry,
             request.app.state.settings,
+            store=getattr(request.app.state, "store", None),
         )
     finally:
         session.close()

@@ -30,3 +30,10 @@ def test_queued_and_processing_can_be_cancelled():
 def test_succeeded_and_cancelled_are_final():
     assert ALLOWED_TRANSITIONS[JobStatus.SUCCEEDED] == frozenset()
     assert ALLOWED_TRANSITIONS[JobStatus.CANCELLED] == frozenset()
+
+
+def test_stored_can_fail_on_storage_errors():
+    # Original preservation happens between STORED and QUEUED; a storage
+    # outage there is a retryable failure, not a stuck job.
+    assert is_transition_allowed(JobStatus.STORED, JobStatus.FAILED)
+    assert is_transition_allowed(JobStatus.STORED, JobStatus.QUEUED)

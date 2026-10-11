@@ -22,7 +22,7 @@ class JobStatus(str, Enum):
 ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     JobStatus.ACCEPTED: frozenset({JobStatus.VALIDATING}),
     JobStatus.VALIDATING: frozenset({JobStatus.STORED, JobStatus.FAILED}),
-    JobStatus.STORED: frozenset({JobStatus.QUEUED}),
+    JobStatus.STORED: frozenset({JobStatus.QUEUED, JobStatus.FAILED}),
     JobStatus.QUEUED: frozenset({JobStatus.PROCESSING, JobStatus.CANCELLED}),
     JobStatus.PROCESSING: frozenset(
         {

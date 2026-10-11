@@ -1,13 +1,17 @@
-"""Job service: idempotent creation and synchronous short-audio processing.
+"""Job service: idempotent creation and the synchronous short-audio path.
 
-Phase 1 runs the whole lifecycle in-process (spec §9 "synchronous
-short-audio path"). Phase 2 moves execution behind Temporal; the status
-machine enforced here stays identical.
+Originals are preserved in object storage under opaque keys (opaque to
+clients, tenant-scoped); the local working copy is kept for dev-speed
+retries — retention/deletion policy lands in the hardening phase.
+Phase 2 moves long-audio execution behind Temporal; the status machine
+enforced here stays identical.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -36,6 +40,10 @@ from stt_platform.providers.base import (
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.jobs import JobFailure, JobRecord
 from stt_platform.schemas.transcript import TranscriptResult
+from stt_platform.storage.keys import artifact_key, original_key
+from stt_platform.storage.s3 import S3ObjectStore
+
+log = logging.getLogger(__name__)
 
 _CHUNK_BYTES = 1024 * 1024
 PROVIDER_CONTRACT_VIOLATION = "PROVIDER_CONTRACT_VIOLATION"
@@ -69,17 +77,19 @@ def compute_fingerprint(
 
 
 class JobService:
-    """Owns the Phase 1 job lifecycle end to end."""
+    """Owns the synchronous job lifecycle end to end."""
 
     def __init__(
         self,
         repo: JobRepository,
         registry: ProviderRegistry,
         settings: Settings | None = None,
+        store: S3ObjectStore | None = None,
     ) -> None:
         self._repo = repo
         self._registry = registry
         self._settings = settings or get_settings()
+        self._store = store
 
     # ------------------------------------------------------------------
     # commands
@@ -141,19 +151,39 @@ class JobService:
         )
         if not retryable:
             raise InvalidTransition(record.status.value, JobStatus.QUEUED.value)
-        if not record.audio_path or not Path(record.audio_path).is_file():
+
+        source: Path | None = None
+        if record.audio_path and Path(record.audio_path).is_file():
+            source = Path(record.audio_path)
+        downloaded: Path | None = None
+        if source is None and record.original_object_key and self._store is not None:
+            data = self._store.get_bytes(
+                self._store.bucket_audio, record.original_object_key
+            )
+            suffix = Path(record.original_object_key).suffix or ".bin"
+            with tempfile.NamedTemporaryFile(
+                dir=self._settings.temp_dir, suffix=suffix, delete=False
+            ) as fh:
+                fh.write(data)
+            downloaded = Path(fh.name)
+            source = downloaded
+        if source is None:
             raise InvalidTransition(record.status.value, JobStatus.QUEUED.value)
 
         provider = self._registry.get(record.requested_provider)
-        self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
-        return self._process(
-            job_id,
-            provider,
-            audio_path=Path(record.audio_path),
-            language=record.language_requested,
-            validate=False,
-            scope=scope,
-        )
+        try:
+            self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
+            return self._process(
+                job_id,
+                provider,
+                audio_path=source,
+                language=record.language_requested,
+                validate=False,
+                scope=scope,
+            )
+        finally:
+            if downloaded is not None:
+                downloaded.unlink(missing_ok=True)
 
     def get(self, job_id: str, scope: str = "local") -> JobRecord:
         return self._repo.get(job_id, scope)
@@ -196,7 +226,29 @@ class JobService:
                 audio_size_bytes=info.size_bytes,
                 audio_path=str(audio_path),
             )
-            self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
+            # Preserve the original in object storage before queueing. A
+            # storage outage is a retryable failure, never a 500.
+            object_key: str | None = None
+            if self._store is not None:
+                object_key = original_key(scope, job_id, audio_path.suffix)
+                try:
+                    self._store.put_file(self._store.bucket_audio, object_key, audio_path)
+                except Exception as exc:  # noqa: BLE001 - infra, retryable
+                    return self._fail(
+                        job_id,
+                        DomainError(
+                            "STORAGE_ERROR",
+                            f"object storage upload failed: {type(exc).__name__}",
+                        ),
+                        retryable=True,
+                        scope=scope,
+                    )
+            self._repo.append_transition(
+                job_id,
+                JobStatus.QUEUED,
+                scope=scope,
+                original_object_key=object_key,
+            )
 
         self._repo.append_transition(job_id, JobStatus.PROCESSING, scope=scope)
         try:
@@ -224,7 +276,7 @@ class JobService:
             )
 
         self._repo.save_result(job_id, result, scope=scope)
-        return self._repo.append_transition(
+        record = self._repo.append_transition(
             job_id,
             JobStatus.SUCCEEDED,
             scope=scope,
@@ -233,6 +285,24 @@ class JobService:
             model_version=transcript.model_version,
             language_detected=transcript.language,
         )
+        self._store_artifact(job_id, result, scope=scope)
+        return record
+
+    def _store_artifact(
+        self, job_id: str, result: TranscriptResult, *, scope: str
+    ) -> None:
+        """Best-effort transcript artifact; the PG row is the source of truth."""
+        if self._store is None:
+            return
+        try:
+            self._store.put_bytes(
+                self._store.bucket_artifacts,
+                artifact_key(scope, job_id, "transcript.json"),
+                result.model_dump_json().encode("utf-8"),
+                content_type="application/json",
+            )
+        except Exception as exc:  # noqa: BLE001 - never fail a SUCCEEDED job
+            log.warning("artifact write failed for job %s: %r", job_id, exc)
 
     def _fail(
         self, job_id: str, exc: DomainError, *, retryable: bool, scope: str

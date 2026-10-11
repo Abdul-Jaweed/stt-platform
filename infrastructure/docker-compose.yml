@@ -14,3 +14,86 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # S3-compatible object storage, digest-pinned (same version mlfast runs;
+  # console on :29001). Secret must be >= 8 chars (mc client rule).
+  rustfs:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    container_name: stt-rustfs
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: stt
+      RUSTFS_SECRET_KEY: stt123456
+    ports: ["29000:9000", "29001:9001"]
+    volumes: ["../.data/rustfs:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # One-shot: create the buckets the backend expects, then exit.
+  storage-init:
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
+    container_name: stt-storage-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://rustfs:9000 stt stt123456
+        mc mb --ignore-existing local/stt-audio
+        mc mb --ignore-existing local/stt-artifacts
+        echo "buckets ready"
+
+  # Temporal server's own database (separate from the app's PostgreSQL).
+  temporal-postgres:
+    image: postgres:16
+    container_name: stt-temporal-postgres
+    environment:
+      POSTGRES_DB: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes: ["../.data/temporal-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Temporal server 1.29.1, digest-pinned. The server binds the container IP
+  # (not loopback), so the healthcheck must use the container name.
+  temporal:
+    image: temporalio/auto-setup@sha256:9be7b8d98f60d00f4f2ff74731c071a17848d8182bbc8429e314a24c94ea105b
+    container_name: stt-temporal
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: temporal-postgres
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+    ports: ["7233:7233"]
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "stt-temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  temporal-ui:
+    image: temporalio/ui@sha256:3899d5cf749b5555c9f798d46f2423b1d6190ea391ca713db5d1bba961759e58
+    container_name: stt-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://127.0.0.1:28080
+    ports: ["28080:8080"]

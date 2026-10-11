@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     s3_endpoint: str = "http://127.0.0.1:29000"
     s3_access_key: str = "stt"
-    s3_secret_key: str = "stt123"
+    s3_secret_key: str = "stt123456"
     s3_region: str = "us-east-1"
     s3_bucket_audio: str = "stt-audio"
     s3_bucket_artifacts: str = "stt-artifacts"

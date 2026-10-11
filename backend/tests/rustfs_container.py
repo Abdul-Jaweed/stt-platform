@@ -11,7 +11,7 @@ from testcontainers.core.container import DockerContainer
 
 IMAGE = "rustfs/rustfs:1.0.1"
 ACCESS_KEY = "stt"
-SECRET_KEY = "stt123"
+SECRET_KEY = "stt123456"
 
 
 class RustFSContainer(DockerContainer):

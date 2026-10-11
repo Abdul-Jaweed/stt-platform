@@ -177,3 +177,28 @@ def test_shipped_manifest_is_valid_and_has_verified_references():
         clip.reference_source == "pending-human-verification"
         for clip in dataset.clips
     ), "the real-speech clip must be present but unscored"
+
+
+def test_audio_root_follows_the_configured_repository_root(tmp_path, monkeypatch):
+    """The root comes from configuration, not from where the package is installed.
+
+    A wheel install puts this module under site-packages, so a path derived
+    from ``__file__`` points outside the application — which is exactly what
+    happened inside the container, where the corpus is mounted at /app/models.
+    """
+    # The fixture manifest declares audio_root: "audio" (repo-relative).
+    configured = tmp_path / "app"
+    corpus = configured / "audio"
+    corpus.mkdir(parents=True)
+    (corpus / "clip-a.wav").write_bytes(b"RIFF")
+
+    from stt_platform.core import config as config_module
+
+    monkeypatch.setenv("STT_REPO_ROOT", str(configured))
+    config_module.get_settings.cache_clear()
+    try:
+        dataset = load_dataset(_manifest(tmp_path, [_clip("clip-a")]))
+        assert dataset.missing_audio == (), dataset.missing_audio
+        assert dataset.by_id("clip-a").audio == corpus / "clip-a.wav"
+    finally:
+        config_module.get_settings.cache_clear()

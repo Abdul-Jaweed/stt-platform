@@ -97,7 +97,22 @@ def default_dataset_path(dataset_id: str = DEFAULT_DATASET_ID) -> Path:
 
 
 def repo_root() -> Path:
-    """Repository root, derived from this file's location."""
+    """Repository root: the configured one, else this file's location.
+
+    Configuration wins because an installed package lives under site-packages,
+    so ``parents[4]`` of this file points at the interpreter, not at the
+    application. The Docker image pins ``STT_REPO_ROOT=/app`` for exactly this
+    reason; the file-derived path stays as the fallback for a source checkout
+    that never configured anything.
+    """
+    try:
+        from stt_platform.core.config import get_settings
+
+        configured = get_settings().repo_root
+        if configured is not None:
+            return Path(configured)
+    except Exception:  # pragma: no cover - configuration is best-effort here
+        pass
     return Path(__file__).resolve().parents[4]
 
 

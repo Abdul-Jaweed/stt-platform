@@ -3,11 +3,10 @@
 Everything is asserted through the SDK's in-memory exporter and a
 recording meter — no network, no collector.
 """
+import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
-
-import pytest
 
 from stt_platform.core.config import Settings
 from stt_platform.observability import tracing
@@ -61,9 +60,7 @@ def test_enabled_provider_carries_resource_attributes():
 
 def test_spans_are_exported_with_attributes_and_parenting():
     exporter = InMemorySpanExporter()
-    provider = tracing.setup_tracing(
-        _settings(), span_exporter=exporter
-    )
+    tracing.setup_tracing(_settings(), span_exporter=exporter)
     try:
         with tracing.get_tracer().start_as_current_span("job.run") as span:
             span.set_attribute("stt.job_id", "job-1")
@@ -102,7 +99,7 @@ def test_unreachable_exporter_never_raises():
     settings = _settings(
         otel_exporter="otlp", otel_endpoint="http://127.0.0.1:1"
     )
-    provider = tracing.setup_tracing(settings)
+    tracing.setup_tracing(settings)
     try:
         with tracing.get_tracer().start_as_current_span("to-nowhere"):
             pass

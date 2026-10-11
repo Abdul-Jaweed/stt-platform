@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.v1 import health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
+from stt_platform.observability import metrics, tracing
+from stt_platform.observability.instrumentation import instrument_app
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
 from stt_platform.providers.registry import ProviderRegistry
@@ -51,6 +53,11 @@ def create_app(
     app.include_router(transcriptions.router, prefix="/v1")
     app.include_router(providers.router, prefix="/v1")
     app.include_router(health.router, prefix="/v1")
+    # Observability last: middleware added last runs first, so correlation
+    # ids are bound (and the request span is opened) before anything else.
+    tracing.setup_tracing(settings)
+    metrics.setup_metrics(settings)
+    instrument_app(app)
     return app
 
 

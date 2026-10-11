@@ -13,24 +13,31 @@ import logging
 from typing import Any
 
 from opentelemetry import trace
+from opentelemetry.context import Context
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
     SimpleSpanProcessor,
     SpanExporter,
+    SpanProcessor,
 )
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import format_span_id, format_trace_id
 
 from stt_platform.core.config import Settings
+from stt_platform.observability import context as obs_context
 
 logger = logging.getLogger(__name__)
 
 SERVICE_VERSION = "0.1.0"
 
-_PROVIDER: TracerProvider | None = None
+class _State:
+    provider: TracerProvider | None = None
+
+
+_STATE = _State()
 
 
 def build_resource(settings: Settings) -> Resource:
@@ -56,21 +63,42 @@ def build_exporter(settings: Settings) -> SpanExporter | None:
     return None
 
 
+class ContextAttributeSpanProcessor(SpanProcessor):
+    """Stamp every span with the request/job ids currently in scope.
+
+    Without this, a span only carries what the call site remembered to set;
+    with it, every span in a request — service, repository, provider — is
+    filterable by correlation id and by job id.
+    """
+
+    def on_start(
+        self, span: Span, parent_context: Context | None = None
+    ) -> None:
+        correlation_id = obs_context.current_correlation_id()
+        if correlation_id:
+            span.set_attribute("stt.correlation_id", correlation_id)
+        job_id = obs_context.current_job_id()
+        if job_id:
+            span.set_attribute("stt.job_id", job_id)
+
+    def on_end(self, span: ReadableSpan) -> None:
+        return None
+
+
 def setup_tracing(
     settings: Settings, *, span_exporter: SpanExporter | None = None
 ) -> TracerProvider | None:
     """Install the global tracer provider; idempotent per process."""
-    global _PROVIDER
-
     if not settings.otel_enabled:
         return None
-    if _PROVIDER is not None:
-        return _PROVIDER
+    if _STATE.provider is not None:
+        return _STATE.provider
 
     provider = TracerProvider(
         resource=build_resource(settings),
         sampler=TraceIdRatioBased(settings.otel_sample_ratio),
     )
+    provider.add_span_processor(ContextAttributeSpanProcessor())
     exporter = span_exporter or build_exporter(settings)
     if exporter is not None:
         processor: Any = (
@@ -80,7 +108,7 @@ def setup_tracing(
         )
         provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
-    _PROVIDER = provider
+    _STATE.provider = provider
     logger.debug(
         "tracing enabled: exporter=%s endpoint=%s",
         settings.otel_exporter,
@@ -91,13 +119,12 @@ def setup_tracing(
 
 def shutdown_tracing() -> None:
     """Flush and drop the provider; safe to call when tracing is off."""
-    global _PROVIDER
-    provider, _PROVIDER = _PROVIDER, None
+    provider, _STATE.provider = _STATE.provider, None
     if provider is None:
         return
     try:
         provider.shutdown()
-    except Exception:  # noqa: BLE001 - shutdown must never raise
+    except Exception:
         logger.debug("tracer provider shutdown failed", exc_info=True)
 
 
@@ -110,12 +137,12 @@ def active_provider() -> TracerProvider | None:
     make a re-configured process (and every test) silently keep the first
     provider's exporters.
     """
-    return _PROVIDER
+    return _STATE.provider
 
 
 def get_tracer(name: str = "stt_platform") -> trace.Tracer:
     """Tracer from the installed provider (no-op when tracing is off)."""
-    provider = _PROVIDER
+    provider = _STATE.provider
     if provider is not None:
         return provider.get_tracer(name)
     return trace.get_tracer(name)

@@ -2,8 +2,8 @@
 
 Provider-neutral Speech-to-Text platform: a headless FastAPI backend that
 turns audio into timestamped transcripts through swappable providers
-(local Faster-Whisper first; Sarvam, Deepgram, ElevenLabs in later
-phases), plus a separate React + TypeScript frontend.
+(local Faster-Whisper, plus managed Sarvam / Deepgram / ElevenLabs Scribe
+behind the same contract), plus a separate React + TypeScript frontend.
 
 ## Status
 
@@ -29,6 +29,16 @@ phases), plus a separate React + TypeScript frontend.
   provider capability table. Verified: 44 frontend tests + real-browser
   e2e against the live stack (`results/phase3_e2e/result.json`). See
   `docs/phase-3-report.md`, `frontend/README.md`.
+- **Phase 4 complete** — managed providers behind the same contract:
+  Deepgram (nova-3) and ElevenLabs Scribe (sync, word-level), Sarvam
+  (asynchronous batch: submit → poll → fetch with a persisted
+  `provider_attempts` row so a crash can never re-submit), key-gated
+  registration, shared HTTP policy (error mapping, size guard, key
+  redaction), GPU/managed concurrency split, honest
+  `documented` vs `verified` capability sources. Amazon Transcribe
+  deferred (AWS setup unverified). Verified: 207 backend tests + 2 GPU +
+  fake-server e2e (`results/phase4_e2e/result.json`). See
+  `docs/phase-4-report.md`, `docs/providers.md`.
 
 ## Repository layout
 
@@ -37,7 +47,7 @@ phases), plus a separate React + TypeScript frontend.
 | `backend/` | Headless FastAPI service + Temporal worker (uv, Python 3.13) |
 | `frontend/` | Independent React + TypeScript + Vite app (consumes only `/v1`) |
 | `infrastructure/` | Docker Compose: PostgreSQL, RustFS, Temporal, Temporal UI |
-| `scripts/` | e2e drivers (`e2e_phase2.py`, `e2e_phase3_frontend.py`) |
+| `scripts/` | e2e drivers (`e2e_phase2.py`, `e2e_phase3_frontend.py`, `e2e_phase4.py`) |
 | `docs/` | Architecture, reports, plans |
 | `models/` | Model caches on the I: drive — never committed |
 | `.cache/` | uv / torch / NeMo caches — never committed |
@@ -95,4 +105,6 @@ npm run dev            # http://localhost:5173 (API base: VITE_API_BASE_URL)
 - `docs/phase-1-report.md` — what Phase 1 shipped, evidence, limitations
 - `docs/phase-2-report.md` — durable processing: evidence, limitations
 - `docs/phase-3-report.md` — frontend: evidence, limitations
+- `docs/providers.md` — provider capability matrix, config, fidelity rules
+- `docs/phase-4-report.md` — managed providers: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

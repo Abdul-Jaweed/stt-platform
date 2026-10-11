@@ -55,7 +55,7 @@ test("async job: max wait exceeded → transient timeout failure")
 test("worker crash mid-poll resumes without resubmitting")        # kill worker, restart, assert submit count == 1
 ```
 
-- [ ] Steps: write failing tests → RED (live Temporal up) → implement → GREEN → `uv run pytest -q` full suite → commit `feat(backend): async provider contract, workflow polling, provider_attempts (T1)`.
+- [x] Steps: write failing tests → RED (live Temporal up) → implement → GREEN → `uv run pytest -q` full suite → commit `feat(backend): async provider contract, workflow polling, provider_attempts (T1)`.
 
 ### Task 2: Managed HTTP base + registry wiring + concurrency split
 
@@ -79,7 +79,7 @@ test("managed semaphore caps in-flight calls (threads, cap=2)")
 test("gpu semaphore serializes whisper calls while managed calls proceed")  # fake slow providers, overlap asserted
 ```
 
-- [ ] Steps as usual (RED → GREEN) → commit `feat(backend): managed http base, key-gated registry, concurrency split (T2)`.
+- [x] Steps as usual (RED → GREEN) → commit `feat(backend): managed http base, key-gated registry, concurrency split (T2)`.
 
 ### Task 3: Deepgram adapter (sync, word-level)
 
@@ -89,7 +89,7 @@ test("gpu semaphore serializes whisper calls while managed calls proceed")  # fa
 
 **Tests:** request shape (query params, auth header, body bytes); normalization (words with punctuated_word preferred, speaker ints, confidence); degenerate words dropped with warning; 429 → retryable; malformed JSON → permanent.
 
-- [ ] Steps as usual → commit `feat(backend): deepgram adapter (T3)`.
+- [x] Steps as usual → commit `feat(backend): deepgram adapter (T3)`.
 
 ### Task 4: ElevenLabs Scribe adapter (sync, word-level)
 
@@ -99,7 +99,7 @@ test("gpu semaphore serializes whisper calls while managed calls proceed")  # fa
 
 **Tests:** multipart shape; spacing entries filtered; speaker mapping; no confidence fabricated (None); error mapping; malformed → permanent.
 
-- [ ] Steps as usual → commit `feat(backend): elevenlabs scribe adapter (T4)`.
+- [x] Steps as usual → commit `feat(backend): elevenlabs scribe adapter (T4)`.
 
 ### Task 5: Sarvam adapter (async batch) + workflow integration
 
@@ -115,7 +115,7 @@ test("gpu semaphore serializes whisper calls while managed calls proceed")  # fa
 # provider_attempts has exactly 1 SUBMITTED row; result provider == "sarvam"
 ```
 
-- [ ] Steps as usual → commit `feat(backend): sarvam async adapter + workflow integration (T5)`.
+- [x] Steps as usual → commit `feat(backend): sarvam async adapter + workflow integration (T5)`.
 
 ### Task 6: Live-test scaffolding + fake-server e2e + docs hooks
 
@@ -123,13 +123,13 @@ test("gpu semaphore serializes whisper calls while managed calls proceed")  # fa
 
 **Tests:** the e2e script is the evidence; a smoke unit test asserts the live tests are deselected without keys (`pytest -m live_provider --collect-only` empty).
 
-- [ ] Steps: write script → run against compose stack (foreground with generous timeout) → green → commit `test(backend): live-provider scaffolding + fake-server e2e (T6)`.
+- [x] Steps: write script → run against compose stack (foreground with generous timeout) → green → commit `test(backend): live-provider scaffolding + fake-server e2e (T6)`.
 
 ### Task 7: Documentation + report
 
 **Files:** `docs/providers.md` (capability matrix: per provider — endpoint, auth, timestamps, diarization, confidence, limits, documented-vs-verified, cost notes), `docs/phase-4-report.md`, `README.md` (status + provider list + env vars), `backend/.env.example` (three keys, empty), plan ticked.
 
-- [ ] Steps: write docs → final gates (`pytest -q`, `-m gpu`, frontend `npm test` untouched but re-run for the record) → commit `docs(phase4): provider matrix and phase report (T7)`.
+- [x] Steps: write docs → final gates (`pytest -q`, `-m gpu`, frontend `npm test` untouched but re-run for the record) → commit `docs(phase4): provider matrix and phase report (T7)`.
 
 ## Self-review
 

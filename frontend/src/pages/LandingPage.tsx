@@ -97,6 +97,7 @@ export default function LandingPage() {
           </span>
         </Link>
         <nav className="landing-nav" aria-label="Sections">
+          <a href="#quickstart">Quick start</a>
           <a href="#features">Features</a>
           <a href="#how">How it works</a>
           <a href="#providers">Providers</a>
@@ -146,6 +147,48 @@ export default function LandingPage() {
               <dd>segments with usable timestamps</dd>
             </div>
           </dl>
+        </section>
+
+        <section className="landing-section quick-start" id="quickstart">
+          <h2>Run it yourself</h2>
+          <p className="section-sub">
+            Docker Desktop or Docker Engine with compose v2, and one command.
+            The stack brings its own database, object storage, workflow engine
+            and console — no cloud account, no API key.
+          </p>
+          <div className="quick-start-grid">
+            <div className="quick-start-command">
+              <pre>
+                <code>./launch.sh</code>
+              </pre>
+              <p className="hint">
+                On a GPU host <code>./launch.sh gpu</code> switches the local
+                model to CUDA; <code>./launch.sh help</code> lists the rest.
+                First run generates the credentials it needs into a gitignored
+                <code> .env</code>.
+              </p>
+            </div>
+            <dl className="quick-start-facts">
+              <div>
+                <dt>Console</dt>
+                <dd>
+                  <code>http://127.0.0.1:8080</code>
+                </dd>
+              </div>
+              <div>
+                <dt>API</dt>
+                <dd>
+                  <code>http://127.0.0.1:8200/v1</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Workflows</dt>
+                <dd>
+                  <code>http://127.0.0.1:28080</code>
+                </dd>
+              </div>
+            </dl>
+          </div>
         </section>
 
         <section className="landing-section" id="features">

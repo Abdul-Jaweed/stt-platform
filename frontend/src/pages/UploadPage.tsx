@@ -259,12 +259,17 @@ export default function UploadPage() {
             </>
           )}
           {providers !== null && providers.length === 1 && (
-            <p className="hint">
-              Provider: {providers[0].name}
-              {providers[0].is_local && !/\(local\)/i.test(providers[0].name)
-                ? " (local)"
-                : ""}
-            </p>
+            <>
+              <label htmlFor="provider">Provider</label>
+              <select id="provider" value={providers[0].id} disabled>
+                <option value={providers[0].id}>
+                  {providers[0].name}
+                  {providers[0].is_local && !/\(local\)/i.test(providers[0].name)
+                    ? " (local)"
+                    : ""}
+                </option>
+              </select>
+            </>
           )}
         </div>
 

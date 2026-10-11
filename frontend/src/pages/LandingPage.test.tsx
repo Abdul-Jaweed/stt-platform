@@ -69,3 +69,18 @@ test("links back to the app's public pages without requiring a session", () => {
 
   expect(screen.getByRole("contentinfo")).toBeInTheDocument();
 });
+
+test("tells a newcomer how to run the whole thing in one command", () => {
+  renderLanding();
+
+  expect(
+    screen.getByRole("heading", { name: /run it yourself/i }),
+  ).toBeInTheDocument();
+  // The literal command, because a marketing page that cannot be followed is
+  // just decoration.
+  expect(screen.getByText("./launch.sh")).toBeInTheDocument();
+  expect(
+    screen.getByText(/docker desktop or docker engine/i),
+  ).toBeInTheDocument();
+  expect(screen.getByText("http://127.0.0.1:8080")).toBeInTheDocument();
+});

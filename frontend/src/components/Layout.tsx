@@ -1,4 +1,10 @@
-import { ChartBar, ListChecks, SignOut, UploadSimple } from "@phosphor-icons/react";
+import {
+  ChartBar,
+  ListChecks,
+  SignOut,
+  UploadSimple,
+  UserCircle,
+} from "@phosphor-icons/react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { useSession } from "../auth/context";
@@ -49,8 +55,10 @@ export default function Layout() {
               <span
                 className="user-chip"
                 data-testid="session-user"
+                aria-label={`Signed in as ${session.username}, tenant ${session.tenant}`}
                 title={`Signed in as ${session.username} · tenant ${session.tenant}`}
               >
+                <UserCircle size={14} aria-hidden="true" />
                 {session.username}
               </span>
             )}

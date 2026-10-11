@@ -363,7 +363,7 @@ main {
 .app-footer {
   padding: 18px clamp(16px, 4vw, 40px) 28px;
   border-top: 1px solid var(--border);
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 12.5px;
   text-align: center;
 }
@@ -483,6 +483,8 @@ main {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  /* Everything inside the zone lines up on one axis: a centred prompt over a
+     left-aligned field made the eye zig-zag down the card. */
   padding: 26px 20px 22px;
   border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-lg);
@@ -491,6 +493,11 @@ main {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease,
     transform 0.15s ease;
+}
+
+.drop-zone .field {
+  align-items: center;
+  width: auto;
 }
 
 .drop-zone:hover,
@@ -636,7 +643,10 @@ button:disabled {
 .primary:disabled,
 .button.primary:disabled {
   background: var(--surface-3);
-  color: var(--text-faint);
+  /* Legible, not invisible: "not yet", not "broken". The generic disabled
+     opacity would stack on top of these colours and wash the label out. */
+  color: var(--text-muted);
+  opacity: 1;
   box-shadow: none;
   filter: none;
 }
@@ -1878,12 +1888,19 @@ tbody tr:hover {
 }
 
 .user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-muted);
   font-size: 12.5px;
+}
+
+.user-chip svg {
+  color: var(--text-faint);
 }
 
 .session-loading {
@@ -2193,4 +2210,80 @@ tbody tr:hover {
 
 .evaluations-page .card {
   margin-top: 16px;
+}
+
+
+/* ======================= landing: quick start ======================= */
+
+.quick-start-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+@media (max-width: 760px) {
+  .quick-start-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.quick-start-command pre {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.quick-start-command code {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--accent-strong);
+}
+
+.quick-start-command .hint {
+  margin: 10px 0 0;
+  max-width: 62ch;
+}
+
+.quick-start-command .hint code,
+.quick-start-facts code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--text);
+  background: var(--surface-3);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+.quick-start-facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-grad);
+}
+
+.quick-start-facts div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quick-start-facts dt {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quick-start-facts dd {
+  margin: 0;
 }

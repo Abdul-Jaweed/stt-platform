@@ -5,6 +5,7 @@ import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
 import type { ProviderInfo } from "../api/types";
 import { formatBytes } from "../lib/format";
+import { setRetainedAudio } from "../lib/retainedAudio";
 
 interface SubmitError {
   code: string;
@@ -58,6 +59,7 @@ export default function UploadPage() {
         language: language.trim() || undefined,
         idempotencyKey: newIdempotencyKey(),
       });
+      setRetainedAudio(job.id, file);
       navigate(`/jobs/${job.id}`);
     } catch (err) {
       setSubmitError(

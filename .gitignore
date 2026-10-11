@@ -1,0 +1,37 @@
+# --- Python environments ---
+.venv/
+.venv-*/
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- I: drive assets: models, caches, generated data (never committed) ---
+models/
+.cache/
+.data/
+audio/
+output/
+results/
+recordings/
+
+# --- Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- Secrets & local config ---
+.env
+.env.local
+
+# --- OS / editor ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+
+# --- Logs ---
+*.log

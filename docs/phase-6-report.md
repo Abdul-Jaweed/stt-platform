@@ -12,9 +12,9 @@ ran on this machine on 2026-10-11; nothing is estimated.
 | T3 | Timestamp quality: availability, boundary error, coverage, monotonicity | `98b221e` |
 | T4 | Runner + platform-path transcriber + real-corpus GPU scoring | `2f57a7f` |
 | T5 | MLflow tracking + PostgreSQL/artifact persistence + migration | `ef70d94` |
-| T6 | `/v1/evaluations` API (run, read back, compare) | see §8 |
-| T7 | Frontend evaluations page + docs | see §8 |
-| T8 | End-to-end driver + this report | see §8 |
+| T6 | `/v1/evaluations` API (run, read back, compare) | `9b69a33` |
+| T7 | Frontend evaluations page + docs | `9b69a33` |
+| T8 | End-to-end driver + this report | `9b69a33` + the commit carrying this file |
 
 Source: `backend/src/stt_platform/evaluation/{datasets.py,metrics.py,timestamps.py,runner.py,platform.py,mlflow_logging.py,datasets/stt-eval-core.json}`,
 `backend/src/stt_platform/persistence/evaluations.py` (+ the two tables in
@@ -68,12 +68,12 @@ RustFS 9000/9001 — no clash with the project stack (25432/29000/7233/28080).
 ## 5. End-to-end evidence (`results/phase6_e2e/result.json`)
 
 Real API process, real `large-v3-turbo` on CUDA, real tracking server, no
-fakes: `POST /v1/evaluations` → **201** in 11.04 s, **8/8 clips scored, 0
+fakes: `POST /v1/evaluations` → **201** in 9.99 s, **8/8 clips scored, 0
 failures, WER micro 0.100 (macro 0.118), CER 0.0946, RTF 0.107**,
-evaluation id `a2df81e7af59486e97103cd1ce28a574`, artifact
-`artifacts/evaluation/a2df81e7af59486e97103cd1ce28a574/result.json`.
+evaluation id `b637d9b59f674f19b5e2b789909813b0`, artifact
+`artifacts/evaluation/b637d9b59f674f19b5e2b789909813b0/result.json`.
 
-The MLflow run (`00ef9a8187fe4b14b24923e2a2bfcbe9`, FINISHED) was read back
+The MLflow run (`d2b0bafab48644ff9526329fdef5c089`, FINISHED) was read back
 from the tracking server: params `dataset_id=stt-eval-core`,
 `dataset_version=1.0.0`, `provider=faster-whisper`, `model=large-v3-turbo`,
 `clips_total=8`, `normalization=stt-normalize-v1`, `decoding={"language": "en"}`;

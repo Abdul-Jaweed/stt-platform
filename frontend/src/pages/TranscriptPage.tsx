@@ -180,6 +180,27 @@ export default function TranscriptPage() {
         </Link>
       </div>
 
+      {result.segments.length > 0 && (
+        <div className="transcript-summary" data-testid="transcript-summary">
+          <span>
+            {result.segments.length}{" "}
+            {result.segments.length === 1 ? "segment" : "segments"}
+          </span>
+          <span className="dot-sep" aria-hidden="true">
+            ·
+          </span>
+          <span>{formatDuration(result.audio_duration_s)} of audio</span>
+          <span className="dot-sep" aria-hidden="true">
+            ·
+          </span>
+          <span>
+            {result.timestamp_granularity === "word"
+              ? "word timestamps"
+              : "segment timestamps"}
+          </span>
+        </div>
+      )}
+
       {result.segments.length === 0 ? (
         <p className="empty-state">
           No speech was detected in this audio — the provider returned an empty

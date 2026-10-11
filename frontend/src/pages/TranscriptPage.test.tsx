@@ -213,3 +213,19 @@ test("explains an empty transcript instead of rendering a blank page", async () 
     await screen.findByText(/no speech was detected/i),
   ).toBeInTheDocument();
 });
+
+test("summarises the transcript above the segments", async () => {
+  server.use(
+    http.get(`${BASE}/v1/transcriptions/j-1/result`, () =>
+      HttpResponse.json(resultFixture),
+    ),
+  );
+
+  renderPage();
+  await screen.findByText("Hello world");
+
+  const summary = screen.getByTestId("transcript-summary");
+  expect(summary).toHaveTextContent(/2 segments/i);
+  expect(summary).toHaveTextContent(/0:04\.000|4\.0 s|0:04/);
+  expect(summary).toHaveTextContent(/word timestamps/i);
+});

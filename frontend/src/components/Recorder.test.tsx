@@ -7,14 +7,30 @@
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { createApiClient } from "../api/client";
+import { ApiProvider } from "../api/context";
 import {
   FakeMediaRecorder,
   installRecorderSupport,
   removeRecorderSupport,
 } from "../test/mediaRecorder";
+import { server } from "../test/server";
 import Recorder from "./Recorder";
+
+const BASE = "http://127.0.0.1:8200";
+
+function renderRecorder(props: Partial<Parameters<typeof Recorder>[0]> = {}) {
+  const onRecorded = props.onRecorded ?? vi.fn();
+  const view = render(
+    <ApiProvider client={createApiClient(BASE)}>
+      <Recorder onRecorded={onRecorded} {...props} />
+    </ApiProvider>,
+  );
+  return { ...view, onRecorded };
+}
 
 beforeEach(() => {
   installRecorderSupport();
@@ -27,7 +43,7 @@ afterEach(() => {
 describe("Recorder", () => {
   test("records and hands the page a file", async () => {
     const onRecorded = vi.fn();
-    render(<Recorder onRecorded={onRecorded} />);
+    renderRecorder({ onRecorded });
 
     await userEvent.click(
       screen.getByRole("button", { name: /start recording/i }),
@@ -47,7 +63,7 @@ describe("Recorder", () => {
 
   test("shows a preview player and can discard the clip", async () => {
     const onRecorded = vi.fn();
-    render(<Recorder onRecorded={onRecorded} />);
+    renderRecorder({ onRecorded });
 
     await userEvent.click(
       screen.getByRole("button", { name: /start recording/i }),
@@ -70,7 +86,7 @@ describe("Recorder", () => {
 
   test("says so plainly when the browser cannot record", () => {
     removeRecorderSupport();
-    render(<Recorder onRecorded={vi.fn()} />);
+    renderRecorder();
 
     expect(screen.getByText(/cannot record audio/i)).toBeInTheDocument();
     expect(
@@ -88,7 +104,7 @@ describe("Recorder", () => {
           ),
       },
     });
-    render(<Recorder onRecorded={vi.fn()} />);
+    renderRecorder();
 
     await userEvent.click(
       screen.getByRole("button", { name: /start recording/i }),
@@ -98,4 +114,66 @@ describe("Recorder", () => {
       /microphone permission was denied/i,
     );
   });
+});
+
+test("shows live transcription while the microphone is open", async () => {
+  server.use(
+    http.post(`${BASE}/v1/transcriptions/preview`, () =>
+      HttpResponse.json({
+        text: "text heard so far",
+        language: "en",
+        segments: [],
+        timestamp_granularity: "segment",
+        audio_duration_s: 5,
+        processing_duration_s: 0.3,
+        provider: "faster-whisper",
+        model: "large-v3-turbo",
+        model_version: null,
+        is_final: false,
+      }),
+    ),
+  );
+
+  renderRecorder();
+  await userEvent.click(
+    screen.getByRole("button", { name: /start recording/i }),
+  );
+
+  const panel = await screen.findByTestId("live-panel");
+  expect(panel).toHaveTextContent(/listening/i);
+
+  // The recorder hands the hook its audio; the preview then fires on its
+  // interval (default 4 s), so give it room.
+  FakeMediaRecorder.instances[0].emitChunk("heard-bytes");
+  await waitFor(
+    () => expect(screen.getByTestId("live-panel")).toHaveTextContent(/text heard so far/i),
+    { timeout: 12000 },
+  );
+  expect(screen.getByTestId("live-panel")).toHaveTextContent(/faster-whisper/);
+});
+
+test("a broken preview never stops the recording", async () => {
+  server.use(
+    http.post(`${BASE}/v1/transcriptions/preview`, () =>
+      HttpResponse.json(
+        { error: { code: "PROVIDER_ERROR", message: "gpu busy" } },
+        { status: 502 },
+      ),
+    ),
+  );
+
+  renderRecorder();
+  await userEvent.click(
+    screen.getByRole("button", { name: /start recording/i }),
+  );
+  FakeMediaRecorder.instances[0].emitChunk("heard-bytes");
+
+  await waitFor(
+    () => expect(screen.getByTestId("live-panel")).toHaveTextContent(/live preview unavailable/i),
+    { timeout: 12000 },
+  );
+  // Still recording, and the take can still be finished.
+  expect(
+    screen.getByRole("button", { name: /stop recording/i }),
+  ).toBeInTheDocument();
 });

@@ -247,3 +247,14 @@ test("says the browser cannot record when MediaRecorder is missing", async () =>
 
   expect(screen.getByText(/cannot record audio/i)).toBeInTheDocument();
 });
+
+test("defaults the language to English", async () => {
+  server.use(
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json(providersBody)),
+  );
+
+  renderUpload();
+  await screen.findByRole("option", { name: /deepgram/i });
+
+  expect(screen.getByLabelText(/language/i)).toHaveValue("en");
+});

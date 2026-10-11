@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 100 * 1024 * 1024
     max_sync_duration_s: float = 180.0
+    #: Live preview (while recording) re-transcribes the audio captured so far
+    #: on every tick, so it is capped: past this, the client stops asking and
+    #: the full job takes over.
+    max_live_preview_duration_s: float = 120.0
     sync_duration_tolerance_s: float = 0.5
 
     s3_endpoint: str = "http://127.0.0.1:29000"

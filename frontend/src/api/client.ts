@@ -1,6 +1,7 @@
 import { ApiError, normalizeError } from "./errors";
 import type {
   EvaluationList,
+  LivePreview,
   EvaluationRecord,
   EvaluationRequest,
   JobRecord,
@@ -21,10 +22,21 @@ export interface CreateTranscriptionResponse {
   job: JobRecord;
 }
 
+export interface PreviewInput {
+  /** The audio captured so far; a File from a recorder or any Blob. */
+  blob: Blob;
+  filename?: string;
+  language?: string;
+  provider?: string;
+  signal?: AbortSignal;
+}
+
 export interface ApiClient {
   createTranscription(
     input: CreateTranscriptionInput,
   ): Promise<CreateTranscriptionResponse>;
+  /** Transient live preview: local provider only, nothing persisted. */
+  previewTranscription(input: PreviewInput): Promise<LivePreview>;
   getJob(id: string): Promise<JobRecord>;
   getResult(id: string): Promise<TranscriptResult>;
   retry(id: string): Promise<JobRecord>;
@@ -106,6 +118,22 @@ export function createApiClient(baseUrl: string): ApiClient {
       const body = await readBody(response);
       if (!response.ok) throw normalizeError(response.status, body);
       return { status: response.status as 201 | 202, job: body as JobRecord };
+    },
+
+    async previewTranscription(input) {
+      const form = new FormData();
+      form.append("file", input.blob, input.filename ?? "preview.webm");
+      if (input.provider) form.append("provider", input.provider);
+      if (input.language) form.append("language", input.language);
+
+      const response = await call("/v1/transcriptions/preview", {
+        method: "POST",
+        body: form,
+        signal: input.signal,
+      });
+      const body = await readBody(response);
+      if (!response.ok) throw normalizeError(response.status, body);
+      return body as LivePreview;
     },
 
     getJob: (id) => get<JobRecord>(jobPath(id)),

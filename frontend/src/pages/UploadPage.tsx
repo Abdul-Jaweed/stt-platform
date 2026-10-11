@@ -33,7 +33,7 @@ export default function UploadPage() {
   const [origin, setOrigin] = useState<"upload" | "recording">("upload");
   const [dragging, setDragging] = useState(false);
   const [provider, setProvider] = useState("");
-  const [language, setLanguage] = useState("");
+  const [language, setLanguage] = useState("en");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -202,7 +202,11 @@ export default function UploadPage() {
           aria-labelledby="tab-record"
           className="tab-panel"
         >
-          <Recorder onRecorded={onRecorded} onDiscarded={clearSelection} />
+          <Recorder
+            onRecorded={onRecorded}
+            onDiscarded={clearSelection}
+            language={language}
+          />
           {file && origin === "recording" && (
             <div className="selection">
               <span className="selection-name">{file.name}</span>
@@ -254,7 +258,7 @@ export default function UploadPage() {
         </div>
 
         <div className="field">
-          <label htmlFor="language">Language (optional)</label>
+          <label htmlFor="language">Language</label>
           <input
             id="language"
             type="text"
@@ -262,6 +266,10 @@ export default function UploadPage() {
             placeholder="auto-detect"
             onChange={(event) => setLanguage(event.target.value)}
           />
+          <span className="hint">
+            Defaults to English — clear the field to let the provider
+            auto-detect.
+          </span>
         </div>
       </div>
 

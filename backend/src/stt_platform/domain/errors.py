@@ -35,6 +35,18 @@ class ProviderError(DomainError):
         self.retryable = retryable
 
 
+class LivePreviewUnsupported(DomainError):
+    """The live preview only runs on the local provider.
+
+    A preview is sent every few seconds while someone is still speaking; it
+    must never spend a managed vendor's quota, and local-only audio must never
+    leave the machine without an explicit choice.
+    """
+
+    def __init__(self, message: str):
+        super().__init__("LIVE_PREVIEW_LOCAL_ONLY", message)
+
+
 class ProviderNotFound(DomainError):
     def __init__(self, provider_id: str):
         super().__init__("PROVIDER_NOT_FOUND", f"unknown provider: {provider_id!r}")

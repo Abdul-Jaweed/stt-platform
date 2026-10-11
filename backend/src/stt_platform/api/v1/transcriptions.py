@@ -38,8 +38,10 @@ from stt_platform.domain.errors import (
     UploadTooLarge,
 )
 from stt_platform.schemas.jobs import JobRecord, PresignedUpload, PresignRequest
+from stt_platform.schemas.live import LivePreviewResponse
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.jobs import JobService
+from stt_platform.services.live import preview_transcription
 from stt_platform.storage.keys import original_key
 
 router = APIRouter(
@@ -72,6 +74,53 @@ def presign_upload(
         upload_url=url,
         expires_in_s=settings.presign_expiry_s,
     )
+
+
+@router.post("/preview", response_model=LivePreviewResponse)
+def preview_audio(
+    request: Request,
+    file: UploadFile = File(...),
+    provider: str | None = Form(None),
+    language: str | None = Form(None),
+    scope: str = Depends(get_scope),
+) -> LivePreviewResponse:
+    """Transcribe the audio captured so far, transiently.
+
+    Called every few seconds while a browser is recording. No job is created,
+    no object is stored, nothing is written to the database — and only the
+    local provider is allowed (``LIVE_PREVIEW_LOCAL_ONLY`` otherwise). The
+    uploaded bytes are deleted before the response leaves.
+    """
+    settings: Settings = request.app.state.settings
+    registry = request.app.state.registry
+
+    settings.temp_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "").suffix
+    if not suffix[1:].isalnum():
+        suffix = ""
+    dest = settings.temp_dir / f"preview-{uuid.uuid4().hex}{suffix}"
+
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = file.file.read(_CHUNK_BYTES)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > settings.max_upload_bytes:
+                    raise UploadTooLarge(
+                        f"upload exceeds the {settings.max_upload_bytes}-byte limit"
+                    )
+                out.write(chunk)
+        return preview_transcription(
+            audio_path=dest,
+            provider=registry.get(provider or None),
+            language=language or None,
+            settings=settings,
+        )
+    finally:
+        dest.unlink(missing_ok=True)
 
 
 @router.post("", status_code=201, response_model=JobRecord)

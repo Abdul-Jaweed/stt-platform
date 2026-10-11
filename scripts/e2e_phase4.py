@@ -119,7 +119,7 @@ class FakeSarvam:
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
-            def log_message(self, format, *args):  # noqa: A002 - http.server API
+            def log_message(self, format, *args):
                 pass
 
             def _send(self, code: int, payload: dict) -> None:
@@ -134,7 +134,7 @@ class FakeSarvam:
                 length = int(self.headers.get("Content-Length") or 0)
                 return self.rfile.read(length) if length else b""
 
-            def do_PUT(self):  # noqa: N802 - http.server API
+            def do_PUT(self):
                 name = self.path.rsplit("/", 1)[-1]
                 data = self._body()
                 outer.audio[name] = data
@@ -142,7 +142,7 @@ class FakeSarvam:
                 outer.duration_s = probe_duration_bytes(data)
                 self._send(201, {})
 
-            def do_POST(self):  # noqa: N802 - http.server API
+            def do_POST(self):
                 path = self.path.split("?")[0]
                 outer.requests.append(f"POST {path}")
                 body = self._body()
@@ -189,7 +189,7 @@ class FakeSarvam:
                         404, {"error": {"message": "unknown", "code": "not_found_error"}}
                     )
 
-            def do_GET(self):  # noqa: N802 - http.server API
+            def do_GET(self):
                 path = self.path.split("?")[0]
                 outer.requests.append(f"GET {path}")
                 if path.endswith("/status"):
@@ -226,6 +226,7 @@ def kill_tree(proc) -> None:
         ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
         capture_output=True,
         text=True,
+        check=False,  # the caller asserts the port is free afterwards
     )
 
 
@@ -237,7 +238,7 @@ def wait_http(url: str, timeout_s: float) -> None:
             response = httpx.get(url, timeout=5.0)
             if response.status_code < 500:
                 return
-        except Exception as exc:  # noqa: BLE001 - retried until the deadline
+        except Exception as exc:
             last = exc
         time.sleep(1.0)
     raise RuntimeError(f"{url} not ready after {timeout_s}s ({last!r})")
@@ -398,14 +399,13 @@ def main() -> int:
         dsn = get_settings().database_url.replace(
             "postgresql+psycopg://", "postgresql://"
         )
-        with psycopg.connect(dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT attempt, state, provider_job_id FROM "
-                    "provider_attempts WHERE job_id = %s ORDER BY attempt",
-                    (job_id,),
-                )
-                rows = cur.fetchall()
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT attempt, state, provider_job_id FROM "
+                "provider_attempts WHERE job_id = %s ORDER BY attempt",
+                (job_id,),
+            )
+            rows = cur.fetchall()
         results["provider_attempts"] = [
             {"attempt": r[0], "state": r[1], "provider_job_id": r[2]}
             for r in rows

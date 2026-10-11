@@ -3,7 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>STT Platform</title>
+    <title>STT Platform — provider-neutral transcription</title>
+    <meta name="description" content="Provider-neutral speech-to-text: upload a file or record in the browser, get timestamped transcripts, and swap providers without touching clients." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f7fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0e17" />
+    <script>
+      // Theme before first paint, so the page never flashes the wrong colours.
+      // Same rule as src/lib/theme.ts (stored choice beats the OS); the key is
+      // asserted in sync by src/shell.test.ts.
+      (function () {
+        try {
+          var stored = localStorage.getItem("stt.theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia &&
+                  window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

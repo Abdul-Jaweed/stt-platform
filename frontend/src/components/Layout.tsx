@@ -1,25 +1,31 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import BrandMark from "./BrandMark";
+import ThemeToggle from "./ThemeToggle";
+
 export default function Layout() {
   return (
     <div className="app">
       <header className="app-header">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
-            ◉
+            <BrandMark />
           </span>
           <span className="brand-text">
             <h1 className="brand-name">STT Platform</h1>
             <span className="brand-tag">provider-neutral transcription</span>
           </span>
         </div>
-        <nav aria-label="Main">
-          <NavLink to="/" end>
-            Upload
-          </NavLink>
-          <NavLink to="/providers">Providers</NavLink>
-          <NavLink to="/evaluations">Evaluations</NavLink>
-        </nav>
+        <div className="header-actions">
+          <nav aria-label="Main">
+            <NavLink to="/" end>
+              Upload
+            </NavLink>
+            <NavLink to="/providers">Providers</NavLink>
+            <NavLink to="/evaluations">Evaluations</NavLink>
+          </nav>
+          <ThemeToggle />
+        </div>
       </header>
       <main>
         <Outlet />

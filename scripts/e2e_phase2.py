@@ -89,7 +89,7 @@ def wait_http(url: str, timeout_s: float) -> None:
             r = httpx.get(url, timeout=2)
             if r.status_code == 200:
                 return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             last = exc
         time.sleep(1)
     raise RuntimeError(f"{url} never became ready: {last!r}")
@@ -134,6 +134,7 @@ def kill_tree(proc: subprocess.Popen) -> None:
         ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
         capture_output=True,
         text=True,
+        check=False,  # the caller asserts the port is free afterwards
     )
 
 
@@ -313,7 +314,7 @@ def main() -> int:
         }
 
         results["ok"] = True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         results["ok"] = False
         results["error"] = f"{type(exc).__name__}: {exc}"
         import traceback

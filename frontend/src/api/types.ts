@@ -89,6 +89,24 @@ export interface TranscriptResult {
   model_version?: string | null;
 }
 
+/**
+ * A transient preview from `POST /v1/transcriptions/preview`: the text heard
+ * so far while recording. Nothing is stored and `is_final` is always false —
+ * it is not the transcript, and must never be presented as one.
+ */
+export interface LivePreview {
+  text: string;
+  language?: string | null;
+  segments: TranscriptSegment[];
+  timestamp_granularity: "segment" | "word";
+  audio_duration_s: number;
+  processing_duration_s: number;
+  provider: string;
+  model: string;
+  model_version?: string | null;
+  is_final: false;
+}
+
 export interface ProviderCapabilities {
   languages: string[];
   language_detection: boolean;

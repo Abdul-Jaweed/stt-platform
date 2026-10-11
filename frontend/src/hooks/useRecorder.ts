@@ -80,6 +80,7 @@ export function useRecorder() {
   const meterRef = useRef<{ context: AudioContext } | null>(null);
   const secondsRef = useRef(0);
   const urlRef = useRef<string | null>(null);
+  const mimeRef = useRef<string | null>(null);
 
   const supported =
     typeof MediaRecorder !== "undefined" &&
@@ -185,6 +186,7 @@ export function useRecorder() {
       streamRef.current = stream;
 
       const mimeType = pickMimeType();
+      mimeRef.current = mimeType;
       const recorder = new MediaRecorder(
         stream,
         mimeType ? { mimeType } : undefined,
@@ -243,6 +245,13 @@ export function useRecorder() {
     supported,
   ]);
 
+  const getBlob = useCallback((): Blob | null => {
+    if (chunksRef.current.length === 0) return null;
+    const type =
+      recorderRef.current?.mimeType || mimeRef.current || "audio/webm";
+    return new Blob(chunksRef.current, { type });
+  }, []);
+
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === "inactive") return;
@@ -271,6 +280,8 @@ export function useRecorder() {
     level,
     clip,
     error,
+    /** The audio captured so far (null before the first chunk arrives). */
+    getBlob,
     start,
     stop,
     reset,

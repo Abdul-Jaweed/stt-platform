@@ -13,17 +13,25 @@ phases), plus a separate React + TypeScript frontend.
 - **Phase 1 complete** — headless backend + local Faster-Whisper
   baseline: `/v1` API, canonical schemas, PostgreSQL persistence with
   Alembic migrations, job lifecycle with audit trail and idempotency.
-  Verified: 97 tests + 2 GPU tests green, real HTTP e2e on the RTX 4060
-  (RTF ≈ 0.08). See `docs/phase-1-report.md`, `docs/api.md`,
+  Verified: real HTTP e2e on the RTX 4060 (RTF ≈ 0.08).
+  See `docs/phase-1-report.md`, `docs/api.md`.
+- **Phase 2 complete** — durable asynchronous pipeline: S3-compatible
+  object storage with opaque keys (RustFS), Temporal workflows with a
+  transactional outbox, bounded backoff + jitter with a visible
+  `RETRY_WAIT` trail, real cancellation, presigned uploads for large
+  files, 202 + poll contract above the sync cap, recovery across worker
+  restarts. Verified: full test suite + real-stack e2e
+  (`scripts/e2e_phase2.py`). See `docs/phase-2-report.md`,
   `docs/reliability.md`.
 
 ## Repository layout
 
 | Path | Purpose |
 |---|---|
-| `backend/` | Headless FastAPI service (uv, Python 3.13) |
+| `backend/` | Headless FastAPI service + Temporal worker (uv, Python 3.13) |
 | `frontend/` | Independent React + TypeScript + Vite app *(Phase 3)* |
-| `infrastructure/` | Docker Compose for local services (PostgreSQL, …) |
+| `infrastructure/` | Docker Compose: PostgreSQL, RustFS, Temporal, Temporal UI |
+| `scripts/` | e2e drivers (`e2e_phase2.py`) |
 | `docs/` | Architecture, reports, plans |
 | `models/` | Model caches on the I: drive — never committed |
 | `.cache/` | uv / torch / NeMo caches — never committed |
@@ -37,23 +45,27 @@ FFmpeg/ffprobe · Docker Desktop · Node 22 / npm 11 *(frontend)*.
 
 ## Quickstart
 
-Local services:
+Local services (full stack):
 
 ```bash
 cd infrastructure
-docker compose up -d --wait postgres   # PostgreSQL 16 on 127.0.0.1:25432
+docker compose up -d --wait
+# PostgreSQL 16 on 127.0.0.1:25432 · RustFS S3 on 127.0.0.1:29000
+# Temporal gRPC on 127.0.0.1:7233 · Temporal UI on 127.0.0.1:28080
 ```
 
-Backend:
+Backend (two processes: API + worker):
 
 ```bash
 cd backend
 uv sync
-uv run alembic upgrade head            # apply the jobs schema
-uv run uvicorn stt_platform.main:app --host 127.0.0.1 --port 8200
+uv run alembic upgrade head            # apply the schema
+uv run uvicorn stt_platform.main:app --host 127.0.0.1 --port 8200   # terminal 1
+uv run python -m stt_platform.workers.transcription_worker          # terminal 2
 ```
 
-Transcribe a file:
+Transcribe a file (short audio answers 201 synchronously; long audio
+answers 202 `QUEUED` and is processed by the worker):
 
 ```bash
 curl -s -F "file=@audio/sample.wav" http://127.0.0.1:8200/v1/transcriptions
@@ -63,7 +75,9 @@ curl -s -F "file=@audio/sample.wav" http://127.0.0.1:8200/v1/transcriptions
 
 - `docs/architecture.md` — architecture, decisions (ADR log), ports
 - `docs/api.md` — `/v1` walkthrough with verified example runs
-- `docs/reliability.md` — Phase 1 guarantees and known gaps
+- `docs/reliability.md` — guarantees (outbox, retries, cancellation)
+  and known gaps
 - `docs/phase-0-report.md` — inspection report, reuse map, risks
 - `docs/phase-1-report.md` — what Phase 1 shipped, evidence, limitations
+- `docs/phase-2-report.md` — durable processing: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

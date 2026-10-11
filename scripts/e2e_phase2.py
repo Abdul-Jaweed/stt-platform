@@ -207,16 +207,21 @@ def main() -> int:
         elapsed = time.time() - t0
         assert job_a["status"] == "SUCCEEDED", job_a.get("failure")
         result_a = client.get(f"/v1/transcriptions/{job_a['id']}/result").json()
-        rtf = result_a["audio_duration_s"] / max(result_a["processing_duration_s"], 1e-9)
+        # RTF = processing / audio (the Phase 1 convention); >1 would mean
+        # slower than realtime. speedup = its inverse, for humans.
+        rtf = result_a["processing_duration_s"] / max(result_a["audio_duration_s"], 1e-9)
+        speedup = 1 / max(rtf, 1e-9)
         print(
-            f"[e2e] job A SUCCEEDED in {elapsed:.1f}s (RTF {rtf:.2f}, "
+            f"[e2e] job A SUCCEEDED in {elapsed:.1f}s wall "
+            f"(RTF {rtf:.3f}, {speedup:.1f}x realtime, "
             f"{len(result_a['text'].split())} words)"
         )
         assert len(result_a["segments"]) > 0
         results["job_a"] = {
             "status": "SUCCEEDED",
             "wall_s": round(elapsed, 1),
-            "rtf": round(rtf, 3),
+            "rtf": round(rtf, 4),
+            "speedup_x": round(speedup, 1),
             "words": len(result_a["text"].split()),
             "segments": len(result_a["segments"]),
             "provider": result_a["provider"],

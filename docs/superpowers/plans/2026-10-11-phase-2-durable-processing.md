@@ -95,7 +95,7 @@ def test_keys_are_opaque_and_scoped():
     assert original_key("local", "j", "../evil") == "audio/local/j/original"
 ```
 
-- [ ] **Step 1:** write tests above. **Step 2:** `uv run pytest tests/integration/test_storage_s3.py -q` → FAIL (`No module named 'stt_platform.storage'`). **Step 3:** `uv add boto3`; implement `keys.py` + `s3.py` (boto3 client, `ensure_buckets` = create if missing; `presign_put` = `generate_presigned_url("put_object")`; `get_container_host_ip` from conftest override already handled). Add settings. **Step 4:** PASS + full suite. **Step 5:** commit `feat(backend): S3-compatible object storage client with opaque keys (T1)`.
+- [x] **Step 1:** write tests above. **Step 2:** `uv run pytest tests/integration/test_storage_s3.py -q` → FAIL (`No module named 'stt_platform.storage'`). **Step 3:** `uv add boto3`; implement `keys.py` + `s3.py` (boto3 client, `ensure_buckets` = create if missing; `presign_put` = `generate_presigned_url("put_object")`; `get_container_host_ip` from conftest override already handled). Add settings. **Step 4:** PASS + full suite. **Step 5:** commit `feat(backend): S3-compatible object storage client with opaque keys (T1)`.
 
 ### Task 2: Compose infra — RustFS + Temporal (+UI)
 
@@ -105,10 +105,10 @@ def test_keys_are_opaque_and_scoped():
 **Interfaces (produces):** services `rustfs` (host `127.0.0.1:29000` S3 / `29001` console), `storage-init` (creates `stt-audio`, `stt-artifacts`), `temporal-postgres` (internal), `temporal` (gRPC `127.0.0.1:7233`), `temporal-ui` (`127.0.0.1:28080`). RustFS service definition is the proven mlfast pattern: image `rustfs/rustfs:1.0.1@sha256:1803fa…` (already on disk), env `RUSTFS_VOLUMES=/data`, `RUSTFS_ADDRESS=0.0.0.0:9000`, console enabled, `RUSTFS_ACCESS_KEY=stt`, `RUSTFS_SECRET_KEY=stt123`; volume `../.data/rustfs:/data`; healthcheck `curl -f http://127.0.0.1:9000/health`. Bucket init uses `bitnamilegacy/minio-client:2025.7.21-debian-12-r3` (already on disk) with `mc alias set local http://rustfs:9000 stt stt123; mc mb local/stt-audio local/stt-artifacts --ignore-existing`. Temporal: `temporalio/auto-setup` **and** `temporalio/ui` pulled now, then **pinned by digest** in the compose file; `temporal` env: `DB=postgres12`, `DB_PORT=5432`, `POSTGRES_SEEDS=temporal-postgres`, `POSTGRES_USER=temporal`, `POSTGRES_PWD=temporal`, depends_on its postgres healthy; `temporal-postgres` = `postgres:16` with `POSTGRES_DB=temporal`.
 
 **Steps:**
-- [ ] **Step 1:** `docker pull temporalio/auto-setup:latest && docker pull temporalio/ui:latest` — then `docker inspect --format='{{index .RepoDigests 0}}'` both → write BOTH as `image: …@sha256:…` pins (reproducible, matches RustFS pattern). Record the resolved versions in the commit message.
-- [ ] **Step 2:** extend `infrastructure/docker-compose.yml` with the six services/definitions above.
-- [ ] **Step 3:** `cd infrastructure && docker compose up -d --wait` (background mode per environment quirk) → then verify, recording real outputs: `docker compose ps` (all healthy); `curl -s http://127.0.0.1:29000/health`; `uv run python -c "import boto3,os; c=boto3.client('s3',endpoint_url='http://127.0.0.1:29000',aws_access_key_id='stt',aws_secret_access_key='stt123',region_name='us-east-1'); print([b['Name'] for b in c.list_buckets()['Buckets']])"` → `['stt-audio','stt-artifacts']` (plus any RustFS internals); `uv run python -c "from temporalio.client import Client; import asyncio; print(asyncio.run(Client.connect('127.0.0.1:7233')).service_client.workflow_service.__class__.__name__)"` after `uv add temporalio` — proves gRPC up.
-- [ ] **Step 4:** re-run `uv run pytest -q` (compose up must not break tests). Commit `feat(infrastructure): rustfs + temporal services, s3 bucket init (T2)` (include `uv.lock` from `uv add temporalio boto3`).
+- [x] **Step 1:** `docker pull temporalio/auto-setup:latest && docker pull temporalio/ui:latest` — then `docker inspect --format='{{index .RepoDigests 0}}'` both → write BOTH as `image: …@sha256:…` pins (reproducible, matches RustFS pattern). Record the resolved versions in the commit message.
+- [x] **Step 2:** extend `infrastructure/docker-compose.yml` with the six services/definitions above.
+- [x] **Step 3:** `cd infrastructure && docker compose up -d --wait` (background mode per environment quirk) → then verify, recording real outputs: `docker compose ps` (all healthy); `curl -s http://127.0.0.1:29000/health`; `uv run python -c "import boto3,os; c=boto3.client('s3',endpoint_url='http://127.0.0.1:29000',aws_access_key_id='stt',aws_secret_access_key='stt123',region_name='us-east-1'); print([b['Name'] for b in c.list_buckets()['Buckets']])"` → `['stt-audio','stt-artifacts']` (plus any RustFS internals); `uv run python -c "from temporalio.client import Client; import asyncio; print(asyncio.run(Client.connect('127.0.0.1:7233')).service_client.workflow_service.__class__.__name__)"` after `uv add temporalio` — proves gRPC up.
+- [x] **Step 4:** re-run `uv run pytest -q` (compose up must not break tests). Commit `feat(infrastructure): rustfs + temporal services, s3 bucket init (T2)` (include `uv.lock` from `uv add temporalio boto3`).
 
 ### Task 3: Migration 0002 + transactional outbox + dispatcher — TDD
 
@@ -133,7 +133,7 @@ def test_claim_batch_skips_locked_rows(...):                    # second session
 def test_retry_wait_can_be_cancelled(...):                      # status map unit
 ```
 
-- [ ] **Step 1:** write tests → RED. **Step 2:** implement models + `alembic revision --autogenerate -m "outbox and original object key"` (review generated revision against models, keep it), outbox repo, dispatcher. **Step 3:** GREEN + full suite. **Step 4:** commit `feat(backend): transactional outbox, dispatcher, migration 0002 (T3)`.
+- [x] **Step 1:** write tests → RED. **Step 2:** implement models + `alembic revision --autogenerate -m "outbox and original object key"` (review generated revision against models, keep it), outbox repo, dispatcher. **Step 3:** GREEN + full suite. **Step 4:** commit `feat(backend): transactional outbox, dispatcher, migration 0002 (T3)`.
 
 ### Task 4: Temporal workflows + worker + bounded backoff — TDD
 
@@ -163,7 +163,7 @@ def test_workflow_permanent_failure(...)           # UNDECODABLE-ish → FAILED 
 def test_workflow_cancel(...)                      # cancel handle → CANCELLED
 ```
 
-- [ ] **Step 1:** write the 4 unit tests + 4 integration tests → RED. **Step 2:** `uv add temporalio` (if not yet), implement. **Step 3:** unit GREEN; integration GREEN vs compose Temporal (or SKIP with printed reason — record honesty). **Step 4:** full suite + GPU gate; commit `feat(backend): temporal transcription workflow, activities, bounded retries, worker (T4)`.
+- [x] **Step 1:** write the 4 unit tests + 4 integration tests → RED. **Step 2:** `uv add temporalio` (if not yet), implement. **Step 3:** unit GREEN; integration GREEN vs compose Temporal (or SKIP with printed reason — record honesty). **Step 4:** full suite + GPU gate; commit `feat(backend): temporal transcription workflow, activities, bounded retries, worker (T4)`.
 
 ### Task 5: Storage wiring — originals to S3, artifacts, retry-from-S3 — TDD
 
@@ -230,11 +230,11 @@ def test_file_and_object_key_rejected(...)           # 422 VALIDATION_ERROR
 - Record evidence under `results/phase2_e2e/` (gitignored).
 
 **Steps:**
-- [ ] **Step 1:** stack up: `docker compose up -d --wait`; `uv run alembic upgrade head`; `uv run uvicorn stt_platform.main:app --host 127.0.0.1 --port 8200` (bg) + `uv run python -m stt_platform.workers.transcription_worker` (bg).
-- [ ] **Step 2 — long-audio async e2e:** with `STT_MAX_SYNC_DURATION_S=4` for the server+worker run: `curl -F file=@audio/sample.wav` (10 s) → expect **202** + `QUEUED`; poll `GET /v1/transcriptions/{id}` until `SUCCEEDED`; `GET …/result` text equals the Phase 1 transcript; verify trail via `docker exec stt-postgres psql -c "select from_status,to_status from job_transitions where job_id='…' order by id"`; verify objects via boto3 (`original.wav` + `transcript.json`).
-- [ ] **Step 3 — cancellation:** with the worker STOPPED: POST (202 QUEUED) → `cancel` → 200 `CANCELLED`; start worker → job stays `CANCELLED` (dispatcher skips).
-- [ ] **Step 4 — recovery:** with the worker STOPPED: POST → QUEUED; start the worker → job completes (proves outbox→workflow→worker durability across process restarts); then kill the worker mid-flight (during a long job), restart → workflow resumes and completes (Temporal replay) — record the actual observed trail.
-- [ ] **Step 5:** gates: `uv run pytest -q` and `uv run pytest -m gpu -q`; record real counts. Write `docs/phase-2-report.md` (per-phase format: files, deps, commands, executed tests, limitations, next phase), update reliability/api docs + READMEs, tick plan boxes. Commit `docs(backend): phase 2 report and run documentation (T8)`.
+- [x] **Step 1:** stack up: `docker compose up -d --wait`; `uv run alembic upgrade head`; `uv run uvicorn stt_platform.main:app --host 127.0.0.1 --port 8200` (bg) + `uv run python -m stt_platform.workers.transcription_worker` (bg).
+- [x] **Step 2 — long-audio async e2e:** with `STT_MAX_SYNC_DURATION_S=4` for the server+worker run: `curl -F file=@audio/sample.wav` (10 s) → expect **202** + `QUEUED`; poll `GET /v1/transcriptions/{id}` until `SUCCEEDED`; `GET …/result` text equals the Phase 1 transcript; verify trail via `docker exec stt-postgres psql -c "select from_status,to_status from job_transitions where job_id='…' order by id"`; verify objects via boto3 (`original.wav` + `transcript.json`).
+- [x] **Step 3 — cancellation:** with the worker STOPPED: POST (202 QUEUED) → `cancel` → 200 `CANCELLED`; start worker → job stays `CANCELLED` (dispatcher skips).
+- [x] **Step 4 — recovery:** with the worker STOPPED: POST → QUEUED; start the worker → job completes (proves outbox→workflow→worker durability across process restarts); then kill the worker mid-flight (during a long job), restart → workflow resumes and completes (Temporal replay) — record the actual observed trail.
+- [x] **Step 5:** gates: `uv run pytest -q` and `uv run pytest -m gpu -q`; record real counts. Write `docs/phase-2-report.md` (per-phase format: files, deps, commands, executed tests, limitations, next phase), update reliability/api docs + READMEs, tick plan boxes. Commit `docs(backend): phase 2 report and run documentation (T8)`.
 
 ## Self-review
 

@@ -46,3 +46,26 @@ def test_registry_registers_elevenlabs_when_key_set(tmp_path):
 
     ids = {info.id for info in registry.all()}
     assert ids == {"faster-whisper", "elevenlabs"}
+
+
+def test_registry_registers_sarvam_when_key_set(tmp_path):
+    registry = build_default_registry(_settings(tmp_path, sarvam_api_key="srv-key"))
+
+    ids = {info.id for info in registry.all()}
+    assert ids == {"faster-whisper", "sarvam"}
+    assert registry.get("sarvam").capabilities().async_processing is True
+
+
+def test_registry_registers_all_when_all_keys_set(tmp_path):
+    registry = build_default_registry(
+        _settings(
+            tmp_path,
+            deepgram_api_key="dg",
+            elevenlabs_api_key="el",
+            sarvam_api_key="srv",
+        )
+    )
+
+    ids = {info.id for info in registry.all()}
+    assert ids == {"faster-whisper", "deepgram", "elevenlabs", "sarvam"}
+    assert registry.default_id == "faster-whisper"

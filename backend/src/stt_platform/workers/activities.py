@@ -301,10 +301,12 @@ class TranscriptionActivities:
                 "model_version": saved.model_version if saved else None,
                 "language": saved.language if saved else None,
             }
+        ref = RemoteJobRef(
+            provider_job_id=attempt_row.provider_job_id,
+            raw=attempt_row.detail if isinstance(attempt_row.detail, dict) else None,
+        )
         try:
-            remote = provider.poll(
-                RemoteJobRef(provider_job_id=attempt_row.provider_job_id)
-            )
+            remote = provider.poll(ref)
         except ProviderError as exc:
             return {"state": "error", "code": exc.code, "message": exc.message}
         except Exception as exc:  # noqa: BLE001 - transport: keep polling

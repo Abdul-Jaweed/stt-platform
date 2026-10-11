@@ -68,7 +68,11 @@ class ManagedHttpClient:
         content: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
-        url = f"{self.base_url}{path}"
+        url = (
+            path
+            if path.startswith(("http://", "https://"))
+            else f"{self.base_url}{path}"
+        )
         semaphore = self._semaphore
         acquired = False
         if semaphore is not None:
@@ -107,12 +111,14 @@ class ManagedHttpClient:
     # internals
     # ------------------------------------------------------------------
     def _auth_headers(self, extra: dict[str, str] | None) -> dict[str, str]:
-        value = (
-            self._api_key
-            if self._auth_scheme is None
-            else f"{self._auth_scheme} {self._api_key}"
-        )
-        headers = {self._auth_header: value}
+        headers: dict[str, str] = {}
+        if self._api_key:
+            value = (
+                self._api_key
+                if self._auth_scheme is None
+                else f"{self._auth_scheme} {self._api_key}"
+            )
+            headers[self._auth_header] = value
         if extra:
             headers.update(extra)
         return headers

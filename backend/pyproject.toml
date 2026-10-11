@@ -27,6 +27,7 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.66b1",
   "psutil>=7.2.2",
   "pynvml>=13.0.1",
+  "mlflow-skinny>=3.17.0",
 ]
 
 [dependency-groups]
@@ -35,6 +36,7 @@ dev = [
     "httpx>=0.28",
     "testcontainers[postgres]>=4.9",
     "respx>=0.23.1",
+    "jiwer>=4.0.0",
 ]
 
 [build-system]

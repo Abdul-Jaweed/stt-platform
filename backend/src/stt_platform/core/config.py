@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     retry_jitter_ratio: float = 0.25
     max_async_duration_s: float = 14400.0
 
+    # Browser frontend origins (Vite dev server / preview server). Override
+    # with a JSON array in STT_CORS_ORIGINS.
+    cors_origins: list[str] = [
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:4173",
+    ]
+
     @model_validator(mode="after")
     def _fill_path_defaults(self) -> "Settings":
         if self.model_dir is None:

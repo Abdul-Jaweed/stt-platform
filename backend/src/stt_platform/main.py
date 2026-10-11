@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.v1 import health, providers, transcriptions
@@ -36,6 +37,13 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title="STT Platform API", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Idempotency-Key"],
+        allow_credentials=False,
+    )
     app.state.settings = settings
     app.state.registry = registry
     app.state.engine = engine

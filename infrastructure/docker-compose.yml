@@ -1,0 +1,16 @@
+name: stt-platform
+services:
+  postgres:
+    image: postgres:16
+    container_name: stt-postgres
+    environment:
+      POSTGRES_DB: stt
+      POSTGRES_USER: stt
+      POSTGRES_PASSWORD: stt
+    ports: ["25432:5432"]
+    volumes: ["../.data/postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stt -d stt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

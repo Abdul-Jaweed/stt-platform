@@ -9,6 +9,36 @@ class OutboxRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def enqueue(
+        self,
+        job_id: str,
+        *,
+        topic: str = "transcription.start",
+        scope: str = "local",
+    ) -> OutboxRow:
+        """Fresh dispatch row for an existing job (re-enqueue after retry)."""
+        row = OutboxRow(
+            topic=topic,
+            job_id=job_id,
+            payload={"job_id": job_id, "scope": scope},
+        )
+        self.session.add(row)
+        self.session.commit()
+        return row
+
+    def latest_for_job(self, job_id: str) -> OutboxRow | None:
+        """Newest dispatch row for a job (used to derive its workflow id)."""
+        return (
+            self.session.execute(
+                select(OutboxRow)
+                .where(OutboxRow.job_id == job_id)
+                .order_by(OutboxRow.id.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+
     def claim_batch(self, limit: int = 10) -> list[OutboxRow]:
         """Pending rows, locked FOR UPDATE SKIP LOCKED, oldest first.
 

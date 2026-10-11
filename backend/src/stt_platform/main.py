@@ -1,5 +1,6 @@
 """FastAPI application factory and ASGI entrypoint."""
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -23,6 +24,7 @@ def create_app(
     settings: Settings | None = None,
     registry: ProviderRegistry | None = None,
     store: S3ObjectStore | None = None,
+    starter: Any = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     registry = registry or build_default_registry()
@@ -39,6 +41,10 @@ def create_app(
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
     app.state.store = store
+    # Optional Temporal starter (duck-typed: callable for dispatch,
+    # ``.cancel(workflow_id)`` for cancellation). Absent => async jobs wait
+    # for the worker's dispatcher tick instead of being nudged inline.
+    app.state.starter = starter
 
     register_exception_handlers(app)
     app.include_router(transcriptions.router, prefix="/v1")
@@ -47,7 +53,27 @@ def create_app(
     return app
 
 
-#: ASGI entrypoint used by uvicorn/gunicorn: wires real object storage.
-#: ``create_app`` itself stays storage-optional so tests can opt in/out.
+#: ASGI entrypoint used by uvicorn/gunicorn: wires real object storage and
+#: the Temporal starter. ``create_app`` itself stays dependency-optional so
+#: tests can opt in/out of storage and dispatch.
 _settings = get_settings()
-app = create_app(settings=_settings, store=S3ObjectStore.from_settings(_settings))
+
+
+def _default_starter() -> Any:
+    from stt_platform.services.temporal_starter import (
+        TemporalWorkflowStarter,
+        retry_config_from_settings,
+    )
+
+    return TemporalWorkflowStarter(
+        host=_settings.temporal_host,
+        task_queue=_settings.temporal_task_queue,
+        retry=retry_config_from_settings(_settings),
+    )
+
+
+app = create_app(
+    settings=_settings,
+    store=S3ObjectStore.from_settings(_settings),
+    starter=_default_starter(),
+)

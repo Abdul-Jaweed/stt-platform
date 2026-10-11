@@ -65,3 +65,10 @@ class InvalidTransition(DomainError):
         super().__init__(
             "INVALID_TRANSITION", f"transition {from_status} -> {to_status} not allowed"
         )
+
+
+class StorageNotConfigured(DomainError):
+    """Asynchronous (Temporal-backed) jobs require object storage."""
+
+    def __init__(self, message: str = "asynchronous jobs require object storage"):
+        super().__init__("STORAGE_NOT_CONFIGURED", message)

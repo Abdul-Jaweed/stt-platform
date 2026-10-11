@@ -20,6 +20,7 @@ from stt_platform.domain.errors import (
     JobNotReady,
     ProviderError,
     ProviderNotFound,
+    StorageNotConfigured,
     UploadTooLarge,
 )
 
@@ -33,6 +34,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     IdempotencyConflict: (409, "IDEMPOTENCY_CONFLICT"),
     InvalidTransition: (409, "INVALID_TRANSITION"),
     ProviderError: (502, "PROVIDER_ERROR"),
+    StorageNotConfigured: (503, "STORAGE_NOT_CONFIGURED"),
 }
 
 

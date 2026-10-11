@@ -21,6 +21,15 @@ Starter = Callable[[dict], None]
 _TERMINAL = {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED}
 
 
+def workflow_id_for(job_id: str, outbox_id: int) -> str:
+    """Deterministic workflow id derived from the outbox row.
+
+    Re-dispatch of the same row maps to the same workflow id, so
+    at-least-once delivery converges to exactly-once execution.
+    """
+    return f"transcribe.{job_id}.{outbox_id}"
+
+
 def dispatch_pending(
     outbox: OutboxRepository, starter: Starter, *, limit: int = 10
 ) -> int:
@@ -34,7 +43,7 @@ def dispatch_pending(
     started = 0
     for row in outbox.claim_batch(limit):
         payload = dict(row.payload)
-        payload["workflow_id"] = f"transcribe.{row.job_id}.{row.id}"
+        payload["workflow_id"] = workflow_id_for(row.job_id, row.id)
         try:
             job = jobs.get(row.job_id, scope=str(payload.get("scope", "local")))
         except JobNotFound:

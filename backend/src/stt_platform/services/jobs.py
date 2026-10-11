@@ -1,10 +1,16 @@
-"""Job service: idempotent creation and the synchronous short-audio path.
+"""Job service: idempotent creation, sync path, async enqueue, cancel.
 
-Originals are preserved in object storage under opaque keys (opaque to
-clients, tenant-scoped); the local working copy is kept for dev-speed
-retries — retention/deletion policy lands in the hardening phase.
-Phase 2 moves long-audio execution behind Temporal; the status machine
-enforced here stays identical.
+Two execution paths share one status machine:
+
+* ``create_and_process`` — short audio, executed inline (Phase 1 contract
+  unchanged: by the time POST returns the job is terminal).
+* ``create_async`` — long audio: the original is preserved in object
+  storage and the job is enqueued in the transactional outbox; the worker
+  dispatcher starts the Temporal workflow that owns the rest.
+
+Originals live in object storage under opaque keys (opaque to clients,
+tenant-scoped); the local working copy is kept for dev-speed retries —
+retention/deletion policy lands in the hardening phase.
 """
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ import json
 import logging
 import tempfile
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +35,11 @@ from stt_platform.domain.errors import (
     InvalidTransition,
     JobNotReady,
     ProviderError,
+    StorageNotConfigured,
     UploadTooLarge,
 )
 from stt_platform.domain.status import JobStatus
+from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.persistence.repositories import JobRepository
 from stt_platform.providers.base import (
     ProviderProtocol,
@@ -40,6 +49,7 @@ from stt_platform.providers.base import (
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.jobs import JobFailure, JobRecord
 from stt_platform.schemas.transcript import TranscriptResult
+from stt_platform.services.dispatch import dispatch_pending, workflow_id_for
 from stt_platform.storage.keys import artifact_key, original_key
 from stt_platform.storage.s3 import S3ObjectStore
 
@@ -77,7 +87,7 @@ def compute_fingerprint(
 
 
 class JobService:
-    """Owns the synchronous job lifecycle end to end."""
+    """Owns the job lifecycle for both execution paths."""
 
     def __init__(
         self,
@@ -85,11 +95,18 @@ class JobService:
         registry: ProviderRegistry,
         settings: Settings | None = None,
         store: S3ObjectStore | None = None,
+        *,
+        outbox: OutboxRepository | None = None,
+        starter: Callable[[dict], None] | None = None,
+        canceller: Callable[[str], None] | None = None,
     ) -> None:
         self._repo = repo
         self._registry = registry
         self._settings = settings or get_settings()
         self._store = store
+        self._outbox = outbox
+        self._starter = starter
+        self._canceller = canceller
 
     # ------------------------------------------------------------------
     # commands
@@ -114,12 +131,9 @@ class JobService:
             options=options,
             audio_path=audio_path,
         )
-        if idempotency_key:
-            existing = self._repo.find_by_idempotency(scope, idempotency_key)
-            if existing is not None:
-                if existing.request_fingerprint == fingerprint:
-                    return existing
-                raise IdempotencyConflict(idempotency_key)
+        existing = self._replay_or_conflict(scope, idempotency_key, fingerprint)
+        if existing is not None:
+            return existing
 
         record = self._repo.create(
             JobRecord(
@@ -141,6 +155,130 @@ class JobService:
             validate=True,
             scope=scope,
         )
+
+    def create_async(
+        self,
+        *,
+        audio_path: Path,
+        provider_id: str | None = None,
+        language: str | None = None,
+        idempotency_key: str | None = None,
+        options: dict[str, Any] | None = None,
+        scope: str = "local",
+    ) -> JobRecord:
+        """Persist the original, then enqueue; execution happens elsewhere."""
+        audio_path = Path(audio_path)
+        options = options or {}
+        provider = self._registry.get(provider_id)
+        if self._store is None:
+            raise StorageNotConfigured()
+
+        fingerprint = compute_fingerprint(
+            provider_id=provider.id,
+            language=language,
+            options=options,
+            audio_path=audio_path,
+        )
+        existing = self._replay_or_conflict(scope, idempotency_key, fingerprint)
+        if existing is not None:
+            return existing
+
+        record = self._repo.create_with_outbox(
+            JobRecord(
+                id=str(uuid.uuid4()),
+                scope=scope,
+                status=JobStatus.ACCEPTED,
+                requested_provider=provider.id,
+                language_requested=language,
+                idempotency_key=idempotency_key,
+                request_fingerprint=fingerprint,
+                options=options,
+            ),
+            topic="transcription.start",
+        )
+        job_id = record.id
+        self._repo.append_transition(job_id, JobStatus.VALIDATING, scope=scope)
+        try:
+            info = validate_upload(
+                audio_path,
+                self._settings,
+                max_duration_s=self._settings.max_async_duration_s,
+            )
+        except (AudioValidationError, UploadTooLarge, AudioTooLong) as exc:
+            return self._fail(job_id, exc, retryable=False, scope=scope)
+
+        self._repo.append_transition(
+            job_id,
+            JobStatus.STORED,
+            scope=scope,
+            audio_format=info.format_name,
+            audio_codec=info.codec,
+            audio_sample_rate=info.sample_rate,
+            audio_channels=info.channels,
+            audio_duration_s=info.duration_s,
+            audio_size_bytes=info.size_bytes,
+        )
+        object_key = original_key(scope, job_id, audio_path.suffix)
+        try:
+            self._store.put_file(self._store.bucket_audio, object_key, audio_path)
+        except Exception as exc:  # noqa: BLE001 - infra failure at intake
+            # Nothing is retryable client-side here: with no local copy the
+            # original never reached storage, so re-submission is the path.
+            return self._fail(
+                job_id,
+                DomainError(
+                    "STORAGE_ERROR",
+                    f"object storage upload failed: {type(exc).__name__}",
+                ),
+                retryable=False,
+                scope=scope,
+            )
+
+        record = self._repo.append_transition(
+            job_id,
+            JobStatus.QUEUED,
+            scope=scope,
+            original_object_key=object_key,
+        )
+        self._dispatch_best_effort()
+        return record
+
+    def cancel(self, job_id: str, scope: str = "local") -> JobRecord:
+        """Cancel a job: directly while QUEUED, via Temporal once started."""
+        record = self._repo.get(job_id, scope)
+        if record.status is JobStatus.QUEUED:
+            return self._repo.append_transition(
+                job_id, JobStatus.CANCELLED, scope=scope
+            )
+        if record.status in (JobStatus.PROCESSING, JobStatus.RETRY_WAIT):
+            row = self._outbox_repo().latest_for_job(job_id)
+            if row is None or self._canceller is None:
+                # An inline (synchronous) job has no workflow to cancel; it
+                # is only observable here for the duration of one request.
+                raise InvalidTransition(
+                    record.status.value, JobStatus.CANCELLED.value
+                )
+            self._canceller(workflow_id_for(job_id, row.id))
+            # The workflow owns the final write: it observes the request,
+            # records CANCELLED, and ends. The caller can poll the job.
+            return record
+        raise InvalidTransition(record.status.value, JobStatus.CANCELLED.value)
+
+    def retry_async(self, job_id: str, scope: str = "local") -> JobRecord:
+        """Re-enqueue a failed asynchronous job (new outbox row)."""
+        record = self._repo.get(job_id, scope)
+        retryable = (
+            record.status is JobStatus.FAILED
+            and record.failure is not None
+            and record.failure.retryable
+            and bool(record.original_object_key)
+        )
+        if not retryable:
+            raise InvalidTransition(record.status.value, JobStatus.QUEUED.value)
+        self._repo.append_transition(job_id, JobStatus.QUEUED, scope=scope)
+        self._outbox_repo().enqueue(job_id, scope=scope)
+        self._dispatch_best_effort()
+        return self._repo.get(job_id, scope)
 
     def retry(self, job_id: str, scope: str = "local") -> JobRecord:
         record = self._repo.get(job_id, scope)
@@ -198,6 +336,32 @@ class JobService:
     # ------------------------------------------------------------------
     # internals
     # ------------------------------------------------------------------
+    def _replay_or_conflict(
+        self, scope: str, idempotency_key: str | None, fingerprint: str
+    ) -> JobRecord | None:
+        if not idempotency_key:
+            return None
+        existing = self._repo.find_by_idempotency(scope, idempotency_key)
+        if existing is None:
+            return None
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise IdempotencyConflict(idempotency_key)
+
+    def _outbox_repo(self) -> OutboxRepository:
+        if self._outbox is None:
+            raise RuntimeError("outbox repository is not wired")
+        return self._outbox
+
+    def _dispatch_best_effort(self) -> None:
+        """Nudge dispatch right after commit; the worker loop is the backstop."""
+        if self._starter is None:
+            return
+        try:
+            dispatch_pending(self._outbox_repo(), self._starter)
+        except Exception as exc:  # noqa: BLE001 - the worker loop will retry
+            log.warning("best-effort dispatch failed: %r", exc)
+
     def _process(
         self,
         job_id: str,

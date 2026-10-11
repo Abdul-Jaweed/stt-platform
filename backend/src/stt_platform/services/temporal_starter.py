@@ -14,6 +14,19 @@ from typing import Any
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
+from stt_platform.core.config import Settings
+
+
+def retry_config_from_settings(settings: Settings) -> dict:
+    """Workflow-side retry parameters (worker and API dispatch share them)."""
+    return {
+        "max_attempts": settings.retry_max_attempts,
+        "base": settings.retry_base_delay_s,
+        "multiplier": settings.retry_multiplier,
+        "cap": settings.retry_max_delay_s,
+        "jitter_ratio": settings.retry_jitter_ratio,
+    }
+
 
 class TemporalWorkflowStarter:
     def __init__(

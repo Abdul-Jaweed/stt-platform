@@ -21,7 +21,10 @@ from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.services.dispatch import dispatch_pending
-from stt_platform.services.temporal_starter import TemporalWorkflowStarter
+from stt_platform.services.temporal_starter import (
+    TemporalWorkflowStarter,
+    retry_config_from_settings,
+)
 from stt_platform.storage.s3 import S3ObjectStore
 from stt_platform.workers.activities import (
     ActivityDeps,
@@ -30,16 +33,6 @@ from stt_platform.workers.activities import (
 from stt_platform.workflows.transcription import TranscriptionWorkflow
 
 log = logging.getLogger(__name__)
-
-
-def retry_config(settings: Settings) -> dict:
-    return {
-        "max_attempts": settings.retry_max_attempts,
-        "base": settings.retry_base_delay_s,
-        "multiplier": settings.retry_multiplier,
-        "cap": settings.retry_max_delay_s,
-        "jitter_ratio": settings.retry_jitter_ratio,
-    }
 
 
 def build_deps(settings: Settings) -> ActivityDeps:
@@ -94,7 +87,7 @@ async def main() -> None:
     starter = TemporalWorkflowStarter(
         host=settings.temporal_host,
         task_queue=settings.temporal_task_queue,
-        retry=retry_config(settings),
+        retry=retry_config_from_settings(settings),
     )
     # Sync activities (ffmpeg, model inference, boto3) run in this pool;
     # max_concurrent_activities is what gates real GPU concurrency.

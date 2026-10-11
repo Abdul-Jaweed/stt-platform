@@ -1,8 +1,11 @@
 """POST /v1/transcriptions and the job lifecycle endpoints.
 
-Phase 1 is a synchronous short-audio path: by the time POST returns, the
-job is terminal (SUCCEEDED or FAILED). The URL contract does not change
-when Phase 2 moves execution behind Temporal.
+Short audio (<= ``max_sync_duration_s``) is processed synchronously when
+object storage is configured, so the caller gets a terminal job with a
+201. Longer audio (up to ``max_async_duration_s``) is preserved in object
+storage and enqueued behind Temporal; the caller gets 202 and polls the
+job. Without object storage the endpoint keeps the Phase 1 sync-only
+contract. The URL contract is identical for both paths.
 """
 import uuid
 from pathlib import Path
@@ -17,7 +20,6 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
 
 from stt_platform.api.deps import get_service
 from stt_platform.audio.validation import validate_upload
@@ -84,20 +86,42 @@ def create_transcription(
             f"upload exceeds the {settings.max_upload_bytes}-byte limit"
         )
 
-    # Pre-flight: reject bad media before a job exists (sync client UX);
-    # the service re-validates inside the VALIDATING state regardless.
+    # Pre-flight: reject bad media before a job exists (client UX); the
+    # service re-validates inside the VALIDATING state regardless. The cap
+    # applied here is the async one when storage is available, since the
+    # request may legitimately route to the asynchronous path.
+    store = getattr(request.app.state, "store", None)
     try:
-        validate_upload(dest, settings)
+        info = validate_upload(
+            dest,
+            settings,
+            max_duration_s=(
+                settings.max_async_duration_s if store is not None else None
+            ),
+        )
     except (AudioValidationError, UploadTooLarge, AudioTooLong):
         dest.unlink(missing_ok=True)
         raise
 
-    job = service.create_and_process(
-        audio_path=dest,
-        provider_id=provider or None,
-        language=language or None,
-        idempotency_key=idempotency_key or None,
-    )
+    if store is not None and info.duration_s > settings.max_sync_duration_s:
+        try:
+            job = service.create_async(
+                audio_path=dest,
+                provider_id=provider or None,
+                language=language or None,
+                idempotency_key=idempotency_key or None,
+            )
+        finally:
+            # The object-storage copy is canonical for asynchronous jobs.
+            dest.unlink(missing_ok=True)
+        response.status_code = 202
+    else:
+        job = service.create_and_process(
+            audio_path=dest,
+            provider_id=provider or None,
+            language=language or None,
+            idempotency_key=idempotency_key or None,
+        )
     response.headers["Location"] = f"/v1/transcriptions/{job.id}"
     return job
 
@@ -120,20 +144,15 @@ def get_transcription_result(
 def retry_transcription(
     job_id: str, service: JobService = Depends(get_service)
 ) -> JobRecord:
+    record = service.get(job_id)
+    local = bool(record.audio_path) and Path(record.audio_path).is_file()
+    if record.original_object_key and not local:
+        return service.retry_async(job_id)
     return service.retry(job_id)
 
 
-@router.post("/{job_id}/cancel")
-def cancel_transcription(job_id: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=501,
-        content={
-            "error": {
-                "code": "NOT_IMPLEMENTED",
-                "message": (
-                    "cancellation arrives with the asynchronous pipeline "
-                    "(Phase 2); synchronous jobs are terminal when POST returns"
-                ),
-            }
-        },
-    )
+@router.post("/{job_id}/cancel", response_model=JobRecord)
+def cancel_transcription(
+    job_id: str, service: JobService = Depends(get_service)
+) -> JobRecord:
+    return service.cancel(job_id)

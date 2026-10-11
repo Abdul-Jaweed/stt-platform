@@ -187,14 +187,14 @@ def test_unknown_job_404(make_client):
     assert client.get("/v1/transcriptions/nope/result").status_code == 404
 
 
-def test_cancel_not_implemented_501(make_client, tmp_path):
+def test_cancel_terminal_job_conflicts_409(make_client, tmp_path):
     client = make_client()
     wav = make_wav(tmp_path, seconds=1.0)
     job_id = _upload(client, wav).json()["id"]
 
     r = client.post(f"/v1/transcriptions/{job_id}/cancel")
-    assert r.status_code == 501
-    assert r.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "INVALID_TRANSITION"
 
 
 def test_missing_file_field_422_error_shape(make_client):

@@ -16,6 +16,13 @@ frontend/
 └── src/test/          msw server, recorder stand-ins, setup
 ```
 
+## Screenshots
+
+`docs/images/` holds live captures of every page (upload/recorder, recorder
+preview, job tracker, transcript, providers, evaluations); the README embeds
+the main ones and `ui-recorder-preview.png` shows a finished take before it is
+submitted.
+
 ## Pages
 
 | Route | What it does |

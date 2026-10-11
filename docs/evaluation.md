@@ -151,7 +151,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/mlflow/mlflow
 cd mlflow && git sparse-checkout set docker-compose && cd docker-compose
 cp .env.dev.example .env
 docker compose up -d          # UI + API on http://localhost:5000
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/health   # 200
+curl -s http://127.0.0.1:5000/health >/dev/null; echo $?   # 0 = up. Do NOT use -o /dev/null on git-bash: it exits 23 even for a healthy server.
 
 # 2. Reference corpus (audio is never committed)
 cd /i/voice-agent-course/local-stt

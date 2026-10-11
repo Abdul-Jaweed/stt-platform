@@ -130,7 +130,10 @@ wait_for_http() {
   local url=$1 label=$2 deadline=$((SECONDS + READY_TIMEOUT))
   printf '  waiting for %s' "$label"
   while [ $SECONDS -lt $deadline ]; do
-    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+    # Redirect the body with the shell, not with curl's -o: on MSYS/git-bash
+    # `curl -o /dev/null` exits 23 (write error) even for a healthy endpoint,
+    # which made this wait report "did not answer" for a stack that was up.
+    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
       printf ' — ready\n'
       return 0
     fi
@@ -196,7 +199,7 @@ status() {
                "http://127.0.0.1:28080|Temporal UI" "http://127.0.0.1:29000/health|object storage"; do
     url=${probe%%|*}
     label=${probe##*|}
-    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
       printf '  \033[32mok\033[0m    %s (%s)\n' "$label" "$url"
     else
       printf '  \033[31mdown\033[0m  %s (%s)\n' "$label" "$url"

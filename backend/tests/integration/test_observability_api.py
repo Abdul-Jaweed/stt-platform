@@ -4,6 +4,7 @@ Own ASGI middleware instead of the FastAPI instrumentor: the attribute
 names, span naming, and metric labels are then ours to pin in tests
 (and stable across semconv versions).
 """
+import logging
 import re
 
 import pytest
@@ -202,6 +203,25 @@ def test_correlation_id_generated_when_absent(client_factory):
 
     generated = response.headers["X-Request-ID"]
     assert re.fullmatch(r"[0-9a-f]{32}", generated)
+
+
+def test_access_log_line_carries_request_context(client_factory, caplog):
+    client = client_factory()
+
+    with caplog.at_level(logging.INFO, logger="stt_platform.access"):
+        response = client.get(
+            "/v1/providers", headers={"X-Request-ID": "corr-access-1"}
+        )
+
+    assert response.status_code == 200
+    record = next(
+        r for r in caplog.records if r.name == "stt_platform.access"
+    )
+    assert record.correlation_id == "corr-access-1"
+    assert record.method == "GET"
+    assert record.path == "/v1/providers"
+    assert record.status_code == 200
+    assert record.duration_ms >= 0
 
 
 def test_correlation_id_present_even_when_tracing_is_disabled(observability):

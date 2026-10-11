@@ -10,6 +10,7 @@ from stt_platform.api.v1 import health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.observability import metrics, tracing
 from stt_platform.observability.instrumentation import instrument_app
+from stt_platform.observability.logging import setup_logging
 from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
@@ -58,6 +59,7 @@ def create_app(
     # ids are bound (and the request span is opened) before anything else.
     tracing.setup_tracing(settings)
     metrics.setup_metrics(settings)
+    setup_logging(settings)
     instrument_app(app)
     return app
 

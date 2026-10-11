@@ -15,6 +15,7 @@ Rules:
 """
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 
@@ -25,6 +26,8 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from stt_platform.observability import context, metrics, tracing
+
+access_log = logging.getLogger("stt_platform.access")
 
 HEALTH_PATHS = frozenset({"/v1/health/live", "/v1/health/ready"})
 UNMATCHED_ROUTE = "<unmatched>"
@@ -133,13 +136,27 @@ class ObservabilityMiddleware:
                 if status_code >= 500:
                     span.set_status(Status(StatusCode.ERROR))
                 span.end()
-            context.reset_correlation_id(token)
             metrics.record_api_request(
                 route=route,
                 method=method,
                 status=status_code,
                 duration_s=duration_s,
             )
+            # Logged before the context is reset so the line carries the id.
+            access_log.info(
+                "%s %s -> %s",
+                method,
+                route,
+                status_code,
+                extra={
+                    "correlation_id": correlation_id,
+                    "method": method,
+                    "path": route,
+                    "status_code": status_code,
+                    "duration_ms": round(duration_s * 1000, 2),
+                },
+            )
+            context.reset_correlation_id(token)
 
 
 def instrument_app(app: FastAPI) -> None:

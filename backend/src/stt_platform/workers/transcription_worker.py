@@ -29,6 +29,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
 
 from stt_platform.core.config import Settings, get_settings
+from stt_platform.observability.logging import setup_logging
 from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
@@ -93,6 +94,7 @@ async def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     settings = get_settings()
+    setup_logging(settings)
     deps = build_deps(settings)
     client = await Client.connect(
         settings.temporal_host,

@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     otel_service_name: str = "stt-platform"
     otel_environment: str = "local"
     otel_sample_ratio: float = 1.0
+    # Logs: plain text by default (readable locally); "json" switches the
+    # root handler to one redacted JSON object per line for aggregation.
+    log_json: bool = False
+    log_level: str = "INFO"
     # Prometheus scrape endpoint for the metric reader (T7).
     prometheus_enabled: bool = False
     prometheus_port: int = 9464

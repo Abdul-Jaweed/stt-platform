@@ -13,6 +13,9 @@ from pathlib import Path
 from stt_platform.domain.errors import AudioValidationError
 
 PROBE_TIMEOUT_S = 15
+# A full decode is only run when ffprobe reports no duration at all (streaming
+# containers); uploads are size-bounded, so this stays cheap in practice.
+MEASURE_TIMEOUT_S = 120
 
 _CREATIONFLAGS = (
     subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -61,6 +64,49 @@ def _ffprobe_json(path: Path) -> dict:
         ) from exc
 
 
+def _measure_duration_s(path: Path) -> float:
+    """Decode the stream and read ffmpeg's own clock.
+
+    Streaming containers carry no Duration element — a browser's
+    ``MediaRecorder`` WebM is the everyday example — so ffprobe has nothing to
+    report and the decoded timeline is the only honest source left. Returns
+    0.0 when even that fails; the caller turns that into ZERO_DURATION.
+    """
+    cmd = [
+        "ffmpeg",
+        "-v", "error",
+        "-nostdin",
+        "-i", str(path),
+        "-map", "0:a:0",
+        "-f", "null",
+        "-progress", "pipe:1",
+        "-nostats",
+        "-",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=MEASURE_TIMEOUT_S,
+            check=False,
+            creationflags=_CREATIONFLAGS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0.0
+    if proc.returncode != 0:
+        return 0.0
+    measured = 0.0
+    for line in proc.stdout.decode("utf-8", errors="replace").splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() != "out_time_us":
+            continue
+        try:
+            measured = max(measured, int(value.strip()) / 1_000_000)
+        except ValueError:
+            continue
+    return measured
+
+
 def inspect_audio(path: Path) -> AudioInfo:
     """Return metadata for the real content of ``path``.
 
@@ -86,6 +132,8 @@ def inspect_audio(path: Path) -> AudioInfo:
         duration_s = float(fmt.get("duration") or stream.get("duration") or 0.0)
     except (TypeError, ValueError):
         duration_s = 0.0
+    if duration_s <= 0:
+        duration_s = _measure_duration_s(path)
     if duration_s <= 0:
         raise AudioValidationError(
             "ZERO_DURATION", "could not determine a positive duration"

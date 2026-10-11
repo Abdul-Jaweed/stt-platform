@@ -2,7 +2,7 @@ import pytest
 
 from stt_platform.audio.inspect import inspect_audio
 from stt_platform.domain.errors import AudioValidationError
-from tests.audio_fixtures import make_mp3, make_wav
+from tests.audio_fixtures import make_mp3, make_streaming_webm, make_wav
 
 
 def test_reads_real_wav_content(tmp_path):
@@ -51,3 +51,22 @@ def test_rejects_empty_file(tmp_path):
 def test_rejects_missing_file(tmp_path):
     with pytest.raises(AudioValidationError):
         inspect_audio(tmp_path / "nope.wav")
+
+
+def test_measures_a_streamed_webm_without_a_duration_header(tmp_path):
+    """Browser recordings have no duration element; measure, never reject."""
+    webm = make_streaming_webm(tmp_path, seconds=3.0)
+
+    info = inspect_audio(webm)
+
+    assert info.format_name.startswith("matroska")
+    assert info.codec == "opus"
+    assert 2.7 < info.duration_s < 3.3
+
+
+def test_streamed_webm_is_not_reported_as_zero_duration(tmp_path):
+    webm = make_streaming_webm(tmp_path, seconds=1.5)
+
+    info = inspect_audio(webm)
+
+    assert info.duration_s > 1.2

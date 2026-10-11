@@ -271,3 +271,41 @@ test("per-clip scores are visible for a loaded evaluation", async () => {
   // The normalization behind the numbers is stated, not implied.
   expect(screen.getByText(/stt-normalize-v1/)).toBeInTheDocument();
 });
+
+test("draws error rates as meters as well as numbers", async () => {
+  server.use(
+    http.get(`${BASE}/v1/evaluations`, () =>
+      HttpResponse.json({
+        evaluations: [
+          {
+            evaluation_id: "eval-1",
+            provider: "faster-whisper",
+            model: "large-v3-turbo",
+            dataset_id: "stt-eval-core",
+            dataset_version: "1.0.0",
+            clips_scored: 8,
+            clips_total: 8,
+            wer_micro: 0.1,
+            wer_macro: 0.118,
+            cer_micro: 0.095,
+            rtf_mean: 0.072,
+            failures: 0,
+            segment_availability_mean: 1,
+            word_availability_mean: 1,
+            insufficient_evidence: false,
+            started_at: "2026-10-11T00:00:00Z",
+          },
+        ],
+        count: 1,
+      }),
+    ),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table");
+
+  const meters = within(table).getAllByRole("meter");
+  expect(meters.length).toBe(3); // WER, CER, RTF
+  expect(meters[0]).toHaveAttribute("aria-valuenow", "10");
+  expect(within(table).getByText("10.0%")).toBeInTheDocument();
+});

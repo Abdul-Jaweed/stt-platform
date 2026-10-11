@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
@@ -6,6 +6,11 @@ import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { createApiClient } from "../api/client";
 import { ApiProvider } from "../api/context";
 import type { ProviderInfo } from "../api/types";
+import {
+  FakeMediaRecorder,
+  installRecorderSupport,
+  removeRecorderSupport,
+} from "../test/mediaRecorder";
 import { server } from "../test/server";
 import UploadPage from "./UploadPage";
 
@@ -166,4 +171,79 @@ test("provider list failure offers a retry that recovers", async () => {
     await screen.findByRole("option", { name: /deepgram/i }),
   ).toBeInTheDocument();
   expect(calls).toBe(2);
+});
+
+test("records audio in the browser and transcribes that clip", async () => {
+  installRecorderSupport();
+  try {
+    server.use(
+      http.get(`${BASE}/v1/providers`, () => HttpResponse.json(providersBody)),
+      http.post(`${BASE}/v1/transcriptions`, () =>
+        HttpResponse.json(
+          {
+            id: "j-rec",
+            status: "QUEUED",
+            attempt_count: 0,
+            options: {},
+            created_at: "2026-10-11T00:00:00Z",
+            updated_at: "2026-10-11T00:00:00Z",
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+
+    renderUpload();
+    await screen.findByRole("option", { name: /deepgram/i });
+
+    await userEvent.click(screen.getByRole("tab", { name: /record audio/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /start recording/i }),
+    );
+    FakeMediaRecorder.instances[0].emitChunk("spoken-words");
+    await userEvent.click(
+      await screen.findByRole("button", { name: /stop recording/i }),
+    );
+
+    expect(await screen.findByLabelText(/recording preview/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /transcribe/i }));
+
+    expect(await screen.findByText(/job page: j-rec/)).toBeInTheDocument();
+  } finally {
+    removeRecorderSupport();
+  }
+});
+
+test("accepts a file dropped onto the zone", async () => {
+  server.use(
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json(providersBody)),
+  );
+
+  renderUpload();
+  await screen.findByRole("option", { name: /deepgram/i });
+
+  const zone = screen.getByTestId("drop-zone");
+  fireEvent.drop(zone, {
+    dataTransfer: {
+      files: [
+        new File([new Uint8Array([1, 2])], "dropped.wav", { type: "audio/wav" }),
+      ],
+    },
+  });
+
+  expect(await screen.findByText(/dropped\.wav/)).toBeInTheDocument();
+});
+
+test("says the browser cannot record when MediaRecorder is missing", async () => {
+  removeRecorderSupport();
+  server.use(
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json(providersBody)),
+  );
+
+  renderUpload();
+  await screen.findByRole("option", { name: /deepgram/i });
+  await userEvent.click(screen.getByRole("tab", { name: /record audio/i }));
+
+  expect(screen.getByText(/cannot record audio/i)).toBeInTheDocument();
 });

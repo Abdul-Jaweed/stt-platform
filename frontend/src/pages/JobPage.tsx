@@ -5,6 +5,7 @@ import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
 import { isTerminal } from "../api/types";
 import type { JobRecord } from "../api/types";
+import JobStages from "../components/JobStages";
 import StatusBadge from "../components/StatusBadge";
 import { useJobPolling } from "../hooks/useJobPolling";
 import { formatBytes, formatDuration } from "../lib/format";
@@ -77,11 +78,17 @@ export default function JobPage({
 
   return (
     <section className="page job-page">
-      <h2>
-        Job {job.id} <StatusBadge status={job.status} />
-      </h2>
+      <header className="page-head">
+        <h2>
+          Job <code className="job-id">{job.id}</code>{" "}
+          <StatusBadge status={job.status} />
+        </h2>
+      </header>
 
-      <dl className="job-meta">
+      <JobStages status={job.status} />
+
+      <div className="card">
+        <dl className="job-meta">
         <dt>Provider</dt>
         <dd>{job.actual_provider ?? job.requested_provider ?? "—"}</dd>
         <dt>Model</dt>
@@ -102,7 +109,8 @@ export default function JobPage({
             </dd>
           </>
         )}
-      </dl>
+        </dl>
+      </div>
 
       {job.failure && (
         <p role="alert" className="error">
@@ -118,7 +126,9 @@ export default function JobPage({
 
       <div className="actions">
         {job.status === "SUCCEEDED" && (
-          <Link to={`/jobs/${job.id}/transcript`}>View transcript</Link>
+          <Link className="button primary" to={`/jobs/${job.id}/transcript`}>
+            View transcript
+          </Link>
         )}
         {job.failure?.retryable && (
           <button

@@ -24,6 +24,7 @@ export default function TranscriptPage() {
   const [error, setError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
+  const [copied, setCopied] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -57,6 +58,16 @@ export default function TranscriptPage() {
     setAudioUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [jobId]);
+
+  const copyTranscript = async () => {
+    try {
+      await navigator.clipboard.writeText(toPlainText(result as TranscriptResult));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   const onSeek = (seconds: number) => {
     setCurrentTime(seconds);
@@ -128,33 +139,59 @@ export default function TranscriptPage() {
         </p>
       )}
 
-      <div className="actions">
-        <button
-          type="button"
-          onClick={() => downloadText(`${result.job_id}.srt`, toSrt(result))}
-        >
-          Download SRT
-        </button>
-        <button
-          type="button"
-          onClick={() => downloadText(`${result.job_id}.vtt`, toVtt(result))}
-        >
-          Download VTT
-        </button>
-        <button
-          type="button"
-          onClick={() => downloadText(`${result.job_id}.txt`, toPlainText(result))}
-        >
-          Download TXT
-        </button>
-        <Link to={`/jobs/${result.job_id}`}>Back to job</Link>
+      <div className="toolbar">
+        <div className="toolbar-group">
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void copyTranscript()}
+          >
+            {copied ? "Copied" : "Copy transcript"}
+          </button>
+        </div>
+        <div className="toolbar-group">
+          <span className="toolbar-label">Download</span>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => downloadText(`${result.job_id}.srt`, toSrt(result))}
+          >
+            Download SRT
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => downloadText(`${result.job_id}.vtt`, toVtt(result))}
+          >
+            Download VTT
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() =>
+              downloadText(`${result.job_id}.txt`, toPlainText(result))
+            }
+          >
+            Download TXT
+          </button>
+        </div>
+        <Link className="ghost link-button" to={`/jobs/${result.job_id}`}>
+          Back to job
+        </Link>
       </div>
 
-      <TranscriptView
-        result={result}
-        currentTime={currentTime}
-        onSeek={onSeek}
-      />
+      {result.segments.length === 0 ? (
+        <p className="empty-state">
+          No speech was detected in this audio — the provider returned an empty
+          transcript. The job itself succeeded; try a longer or clearer clip.
+        </p>
+      ) : (
+        <TranscriptView
+          result={result}
+          currentTime={currentTime}
+          onSeek={onSeek}
+        />
+      )}
     </section>
   );
 }

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
 import type { ProviderInfo } from "../api/types";
+import Recorder from "../components/Recorder";
 import { formatBytes } from "../lib/format";
 import { setRetainedAudio } from "../lib/retainedAudio";
 
@@ -11,6 +12,8 @@ interface SubmitError {
   code: string;
   message: string;
 }
+
+type Source = "file" | "record";
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -25,11 +28,15 @@ export default function UploadPage() {
 
   const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
   const [providersError, setProvidersError] = useState<string | null>(null);
+  const [source, setSource] = useState<Source>("file");
   const [file, setFile] = useState<File | null>(null);
+  const [origin, setOrigin] = useState<"upload" | "recording">("upload");
+  const [dragging, setDragging] = useState(false);
   const [provider, setProvider] = useState("");
   const [language, setLanguage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const loadProviders = useCallback(async () => {
     setProvidersError(null);
@@ -37,15 +44,40 @@ export default function UploadPage() {
       const list = await api.getProviders();
       setProviders(list);
     } catch (err) {
-      setProvidersError(
-        err instanceof ApiError ? err.message : String(err),
-      );
+      setProvidersError(err instanceof ApiError ? err.message : String(err));
     }
   }, [api]);
 
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
+
+  const selectFile = useCallback((next: File, from: "upload" | "recording") => {
+    setFile(next);
+    setOrigin(from);
+    setSubmitError(null);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setFile(null);
+    setOrigin("upload");
+    if (inputRef.current) inputRef.current.value = "";
+  }, []);
+
+  const onRecorded = useCallback(
+    (recorded: File) => selectFile(recorded, "recording"),
+    [selectFile],
+  );
+
+  function onDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    const dropped = event.dataTransfer?.files?.[0];
+    if (dropped) {
+      selectFile(dropped, "upload");
+      setSource("file");
+    }
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -74,23 +106,113 @@ export default function UploadPage() {
 
   return (
     <section className="page upload-page">
-      <h2>New transcription</h2>
+      <header className="page-head">
+        <h2>New transcription</h2>
+        <p className="hint">
+          Upload a file, or record straight from your microphone — both take
+          the same path through the platform.
+        </p>
+      </header>
+
       <form onSubmit={onSubmit}>
-        <div className="field">
-          <label htmlFor="file">Audio file</label>
-          <input
-            id="file"
-            type="file"
-            accept="audio/*,video/*,.wav,.mp3,.m4a,.flac,.ogg,.webm"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          />
-          {file && (
-            <p className="hint">
-              {file.name} — {formatBytes(file.size)}
+      <div className="tabs" role="tablist" aria-label="Audio source">
+        <button
+          type="button"
+          role="tab"
+          id="tab-file"
+          aria-selected={source === "file"}
+          aria-controls="panel-file"
+          className={source === "file" ? "tab is-active" : "tab"}
+          onClick={() => setSource("file")}
+        >
+          Upload a file
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-record"
+          aria-selected={source === "record"}
+          aria-controls="panel-record"
+          className={source === "record" ? "tab is-active" : "tab"}
+          onClick={() => setSource("record")}
+        >
+          Record audio
+        </button>
+      </div>
+
+      {source === "file" ? (
+        <div
+          role="tabpanel"
+          id="panel-file"
+          aria-labelledby="tab-file"
+          className="tab-panel"
+        >
+          <div
+            className={dragging ? "drop-zone is-dragging" : "drop-zone"}
+            data-testid="drop-zone"
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={(event) => {
+              if (event.target !== inputRef.current) inputRef.current?.click();
+            }}
+          >
+            <span className="drop-zone-icon" aria-hidden="true">
+              ⤓
+            </span>
+            <p className="drop-zone-title">
+              Drop an audio file here, or browse
             </p>
+            <div className="field">
+              <label htmlFor="file">Audio file</label>
+              <input
+                ref={inputRef}
+                id="file"
+                type="file"
+                accept="audio/*,video/*,.wav,.mp3,.m4a,.flac,.ogg,.webm"
+                onChange={(event) => {
+                  const chosen = event.target.files?.[0];
+                  if (chosen) selectFile(chosen, "upload");
+                }}
+              />
+            </div>
+            <p className="hint">
+              WAV, MP3, M4A, FLAC, OGG or WebM. The container is validated by
+              its actual content, never by the file extension.
+            </p>
+          </div>
+
+          {file && origin === "upload" && (
+            <div className="selection">
+              <span className="selection-name">{file.name}</span>
+              <span className="badge badge-neutral">{formatBytes(file.size)}</span>
+              <button type="button" className="ghost" onClick={clearSelection}>
+                Clear
+              </button>
+            </div>
           )}
         </div>
+      ) : (
+        <div
+          role="tabpanel"
+          id="panel-record"
+          aria-labelledby="tab-record"
+          className="tab-panel"
+        >
+          <Recorder onRecorded={onRecorded} onDiscarded={clearSelection} />
+          {file && origin === "recording" && (
+            <div className="selection">
+              <span className="selection-name">{file.name}</span>
+              <span className="badge badge-neutral">{formatBytes(file.size)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
+      <div className="form-row">
         <div className="field">
           {providersError !== null && (
             <div role="alert" className="error">
@@ -141,16 +263,24 @@ export default function UploadPage() {
             onChange={(event) => setLanguage(event.target.value)}
           />
         </div>
+      </div>
 
-        {submitError !== null && (
-          <p role="alert" className="error">
-            <strong>{submitError.code}</strong> {submitError.message}
-          </p>
-        )}
+      {submitError !== null && (
+        <p role="alert" className="error">
+          <strong>{submitError.code}</strong> {submitError.message}
+        </p>
+      )}
 
-        <button type="submit" disabled={!file || submitting}>
+      <div className="submit-row">
+        <button type="submit" className="primary" disabled={!file || submitting}>
           {submitting ? "Submitting…" : "Transcribe"}
         </button>
+        <span className="hint">
+          {file
+            ? "Ready when you are."
+            : "Pick a file or record a clip to enable transcription."}
+        </span>
+      </div>
       </form>
     </section>
   );

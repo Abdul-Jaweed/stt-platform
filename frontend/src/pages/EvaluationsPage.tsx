@@ -9,6 +9,42 @@ import type {
   ProviderInfo,
 } from "../api/types";
 
+/**
+ * A meter for a rate that is 0..1 by definition. `null` stays a statement
+ * ("not reported"), never a zero-length bar — the platform never turns a
+ * missing measurement into a good-looking one.
+ */
+function Meter({
+  value,
+  label,
+  max = 1,
+}: {
+  value: number | null;
+  label: string;
+  max?: number;
+}) {
+  if (value === null || value === undefined) {
+    return <span className="hint">not reported</span>;
+  }
+  const percentOfMax = Math.max(0, Math.min(100, Math.round((value / max) * 100)));
+  return (
+    <span
+      className="meter"
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percentOfMax}
+      aria-valuetext={`${percentOfMax}%`}
+    >
+      <span
+        className="meter-fill"
+        style={{ width: `${Math.max(2, percentOfMax)}%` }}
+      />
+    </span>
+  );
+}
+
 function percent(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   return `${(value * 100).toFixed(1)}%`;
@@ -99,9 +135,18 @@ function ComparisonTable({
               {row.clips_scored}/{row.clips_total}
               {row.failures > 0 && ` (${row.failures} failed)`}
             </td>
-            <td>{percent(row.wer_micro)}</td>
-            <td>{percent(row.cer_micro)}</td>
-            <td>{row.rtf_mean === null ? "—" : row.rtf_mean.toFixed(3)}</td>
+            <td>
+              <Meter value={row.wer_micro} label="Word error rate" />
+              {percent(row.wer_micro)}
+            </td>
+            <td>
+              <Meter value={row.cer_micro} label="Character error rate" />
+              {percent(row.cer_micro)}
+            </td>
+            <td>
+              <Meter value={row.rtf_mean} label="Real-time factor" max={0.5} />
+              {row.rtf_mean === null ? "—" : row.rtf_mean.toFixed(3)}
+            </td>
             <td>
               {row.word_availability_mean === null
                 ? "not reported"

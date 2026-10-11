@@ -12,6 +12,16 @@ export function formatDuration(seconds: number): string {
   return `${core}.${tenths}`;
 }
 
+/** Recorder-style clock: `m:ss`, or `h:mm:ss` past an hour. */
+export function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const core = `${minutes}:${String(secs).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${core.padStart(5, "0")}` : core;
+}
+
 export function formatTimestamp(seconds: number): string {
   const totalMs = Math.round(seconds * 1000);
   const ms = totalMs % 1000;

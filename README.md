@@ -158,13 +158,22 @@ VALIDATING -> STORED -> QUEUED -> PROCESSING -> RETRY_WAIT -> QUEUED -> PROCESSI
 
 | | |
 |---|---|
-| ![Upload](docs/images/ui-upload.png) | ![Providers](docs/images/ui-providers.png) |
-| Upload with provider and language selection | Live provider capability matrix |
+| ![Upload](docs/images/ui-upload.png) | ![Recording](docs/images/ui-recorder.png) |
+| Upload a file, or record in the browser | Recording from the microphone, with timer and level |
 | ![Job](docs/images/ui-job.png) | ![Evaluations](docs/images/ui-evaluations.png) |
-| Job state, provider, model, attempts, timings | Evaluation comparison across runs |
+| Job lifecycle tracker, provider, model, timings | Evaluation comparison, error rates as meters |
 
 The transcript page (top of this README) renders segments with word-level
-timestamps and offers TXT/SRT/VTT export.
+timestamps, copies the plain text in one click, and exports TXT/SRT/VTT.
+
+**Recording in the browser.** The upload page has a *Record audio* tab: the
+browser captures the microphone with `MediaRecorder`, shows a live timer and
+input level, lets you preview and discard the take, and hands the finished clip
+to the exact same upload path as a chosen file — one provider contract, no
+special case. The microphone is released on stop, on discard, and on leaving
+the page. Browser recordings are streaming WebM with **no duration header**;
+the platform measures the real duration by decoding the stream instead of
+rejecting the file (see `docs/ui.md`).
 
 ## Providers
 
@@ -329,6 +338,7 @@ time, and the evaluation corpus is regenerated with
 | `docs/live-provider-verification.md` | live vendor runs: numbers, defects, evidence |
 | `docs/observability.md` | traces, logs, metric catalog, dashboard, alerts |
 | `docs/evaluation.md` | datasets, metrics, normalization, MLflow, limits |
+| `docs/ui.md` | frontend: pages, the browser recorder, streaming-WebM duration, design rules |
 | `docs/operations.md` | running it: config, routine tasks, backups, capacity |
 | `docs/incident-recovery.md` | what breaks, what the platform does, what you do |
 | `docs/phase-{0..7}-report.md` | per-phase evidence and limitations |

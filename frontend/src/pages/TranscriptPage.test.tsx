@@ -171,3 +171,45 @@ test("a not-ready result (409) renders an error with retry", async () => {
 
   expect(await screen.findByText("Hello world")).toBeInTheDocument();
 });
+
+test("copies the plain text to the clipboard", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  server.use(
+    http.get(`${BASE}/v1/transcriptions/j-1/result`, () =>
+      HttpResponse.json(resultFixture),
+    ),
+  );
+
+  renderPage();
+  await screen.findByText("Hello world");
+
+  await userEvent.click(
+    screen.getByRole("button", { name: /copy transcript/i }),
+  );
+
+  expect(writeText).toHaveBeenCalledWith("Hello world\nSecond line");
+  expect(await screen.findByText(/copied/i)).toBeInTheDocument();
+});
+
+test("explains an empty transcript instead of rendering a blank page", async () => {
+  server.use(
+    http.get(`${BASE}/v1/transcriptions/j-1/result`, () =>
+      HttpResponse.json({
+        ...resultFixture,
+        text: "",
+        segments: [],
+        words: [],
+      }),
+    ),
+  );
+
+  renderPage();
+
+  expect(
+    await screen.findByText(/no speech was detected/i),
+  ).toBeInTheDocument();
+});

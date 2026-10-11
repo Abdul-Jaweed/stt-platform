@@ -47,3 +47,30 @@ def make_mp3(path: Path, seconds: float = 2.0, freq: int = 440) -> Path:
         ]
     )
     return out
+
+
+def make_streaming_webm(path: Path, seconds: float = 3.0, freq: int = 440) -> Path:
+    """A WebM written to a pipe, like ``MediaRecorder`` does.
+
+    Streaming WebM (Segment Info without a Duration element) is what every
+    browser's MediaRecorder produces: ffprobe reports no duration at all, so
+    the platform must measure it instead of rejecting the file.
+    """
+    out = path / "streamed.webm" if path.is_dir() else path
+    with open(out, "wb") as fh:
+        proc = subprocess.run(
+            [
+                "ffmpeg", "-v", "error",
+                "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={seconds}",
+                "-ar", "48000", "-ac", "1", "-c:a", "libopus",
+                "-f", "webm", "-",
+            ],
+            stdout=fh,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            creationflags=_CREATIONFLAGS,
+        )
+    if proc.returncode != 0:
+        detail = proc.stderr.decode("utf-8", errors="replace")[-500:]
+        raise RuntimeError(f"ffmpeg failed: {detail}")
+    return out

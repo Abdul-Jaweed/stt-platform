@@ -29,7 +29,11 @@ def temporal_interceptors(settings: Settings) -> list[TracingInterceptor]:
     """
     if not settings.otel_enabled:
         return []
-    return [TracingInterceptor(tracing.get_tracer())]
+    return [
+        TracingInterceptor(
+            tracing.get_tracer(), always_create_workflow_spans=True
+        )
+    ]
 
 
 @contextmanager

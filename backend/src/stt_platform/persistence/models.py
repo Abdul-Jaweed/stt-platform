@@ -2,6 +2,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -139,3 +140,70 @@ class ProviderAttemptRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+class EvaluationRow(Base):
+    """One evaluation run: dataset x provider x configuration.
+
+    The numbers live here; the full result (transcripts included) is an
+    artifact in object storage, exactly like every other transcript.
+    """
+
+    __tablename__ = "evaluations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(String(128), index=True)
+    dataset_version: Mapped[str] = mapped_column(String(64))
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(24), default="COMPLETED")
+    decoding: Mapped[dict] = mapped_column(JSONB, default=dict)
+    normalization: Mapped[dict] = mapped_column(JSONB, default=dict)
+    aggregate: Mapped[dict] = mapped_column(JSONB, default=dict)
+    by_group: Mapped[dict] = mapped_column(JSONB, default=dict)
+    insufficient_evidence: Mapped[bool] = mapped_column(Boolean, default=False)
+    clips_total: Mapped[int] = mapped_column(Integer, default=0)
+    clips_scored: Mapped[int] = mapped_column(Integer, default=0)
+    wer_micro: Mapped[float | None] = mapped_column(Float)
+    cer_micro: Mapped[float | None] = mapped_column(Float)
+    mlflow: Mapped[dict | None] = mapped_column(JSONB)
+    artifact_key: Mapped[str | None] = mapped_column(String(256))
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_s: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    clips: Mapped[list["EvaluationClipRow"]] = relationship(
+        back_populates="evaluation",
+        cascade="all, delete-orphan",
+        order_by="EvaluationClipRow.clip_id",
+    )
+
+
+class EvaluationClipRow(Base):
+    """Per-clip metrics. No transcript text: that is the artifact's job."""
+
+    __tablename__ = "evaluation_clips"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id: Mapped[str] = mapped_column(
+        ForeignKey("evaluations.id", ondelete="CASCADE"), index=True
+    )
+    clip_id: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(24))
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(128))
+    audio_sha256: Mapped[str | None] = mapped_column(String(64))
+    wer: Mapped[float | None] = mapped_column(Float)
+    cer: Mapped[float | None] = mapped_column(Float)
+    word_errors: Mapped[dict | None] = mapped_column(JSONB)
+    char_errors: Mapped[dict | None] = mapped_column(JSONB)
+    timings: Mapped[dict] = mapped_column(JSONB, default=dict)
+    timestamps: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String(512))
+
+    evaluation: Mapped[EvaluationRow] = relationship(back_populates="clips")

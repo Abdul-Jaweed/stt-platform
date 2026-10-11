@@ -10,8 +10,12 @@ phases), plus a separate React + TypeScript frontend.
 - **Phase 0 complete** — repository/environment inspection, architecture
   decisions, Phase 1 plan. See `docs/phase-0-report.md`,
   `docs/architecture.md`.
-- **Phase 1 in progress** — headless backend + local Faster-Whisper
-  baseline.
+- **Phase 1 complete** — headless backend + local Faster-Whisper
+  baseline: `/v1` API, canonical schemas, PostgreSQL persistence with
+  Alembic migrations, job lifecycle with audit trail and idempotency.
+  Verified: 97 tests + 2 GPU tests green, real HTTP e2e on the RTX 4060
+  (RTF ≈ 0.08). See `docs/phase-1-report.md`, `docs/api.md`,
+  `docs/reliability.md`.
 
 ## Repository layout
 
@@ -37,19 +41,29 @@ Local services:
 
 ```bash
 cd infrastructure
-docker compose up -d postgres        # PostgreSQL 16 on 127.0.0.1:25432
+docker compose up -d --wait postgres   # PostgreSQL 16 on 127.0.0.1:25432
 ```
 
-Backend (available once Phase 1 lands):
+Backend:
 
 ```bash
 cd backend
 uv sync
-uv run uvicorn stt_platform.main:app --port 8200
+uv run alembic upgrade head            # apply the jobs schema
+uv run uvicorn stt_platform.main:app --host 127.0.0.1 --port 8200
+```
+
+Transcribe a file:
+
+```bash
+curl -s -F "file=@audio/sample.wav" http://127.0.0.1:8200/v1/transcriptions
 ```
 
 ## Documentation
 
 - `docs/architecture.md` — architecture, decisions (ADR log), ports
+- `docs/api.md` — `/v1` walkthrough with verified example runs
+- `docs/reliability.md` — Phase 1 guarantees and known gaps
 - `docs/phase-0-report.md` — inspection report, reuse map, risks
+- `docs/phase-1-report.md` — what Phase 1 shipped, evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

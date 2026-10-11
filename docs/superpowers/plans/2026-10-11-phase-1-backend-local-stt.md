@@ -1,5 +1,7 @@
 # Phase 1 — Headless Backend & Local STT Baseline — Implementation Plan
 
+> **Status: COMPLETE (2026-10-11).** Tasks 1–9 executed under TDD; gates green (97 tests + 2 GPU tests); real-server e2e verified. See `docs/phase-1-report.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A functional headless FastAPI backend that transcribes short audio with Faster-Whisper `large-v3-turbo` on CUDA and returns canonical, original-timeline-timestamped transcripts persisted in PostgreSQL.
@@ -47,7 +49,7 @@
 - `get_settings() -> Settings` (cached) with fields: `database_url`, `repo_root`, `model_dir`, `hf_home`, `temp_dir`, `audio_store_dir`, `whisper_model`, `device`, `compute_type`, `max_upload_bytes`, `max_sync_duration_s`, `sync_duration_tolerance_s`; method `apply_runtime_env()` (sets `HF_HOME`, `HF_HUB_CACHE`, `HF_HUB_DISABLE_SYMLINKS_WARNING`, `UV_CACHE_DIR`).
 - `core.cuda.register_cuda_dll_dirs() -> None` — import-time side effect, idempotent.
 
-- [ ] **Step 1: pyproject.toml** (exact)
+- [x] **Step 1: pyproject.toml** (exact)
 
 ```toml
 [project]
@@ -86,9 +88,9 @@ addopts = "-m 'not gpu'"
 markers = ["gpu: requires CUDA GPU and cached model"]
 ```
 
-- [ ] **Step 2:** `export UV_CACHE_DIR=I:/voice-agent-course/local-stt/.cache/uv && cd backend && uv lock && uv sync` — expects lock created, env synced (wheel cache hits from `.cache/uv` avoid ~1.5 GB of downloads).
+- [x] **Step 2:** `export UV_CACHE_DIR=I:/voice-agent-course/local-stt/.cache/uv && cd backend && uv lock && uv sync` — expects lock created, env synced (wheel cache hits from `.cache/uv` avoid ~1.5 GB of downloads).
 
-- [ ] **Step 3: core/cuda.py** (exact)
+- [x] **Step 3: core/cuda.py** (exact)
 
 ```python
 """Windows CUDA DLL registration. Import BEFORE faster_whisper/ctranslate2."""
@@ -110,11 +112,11 @@ def register_cuda_dll_dirs() -> None:
 register_cuda_dll_dirs()
 ```
 
-- [ ] **Step 4: core/config.py** — `Settings(BaseSettings)` with `env_prefix="STT_"`, `env_file=".env"`, defaults: `repo_root = Path(__file__).resolve().parents[4]` (config.py → core → stt_platform → src → backend → local-stt); `model_dir = repo_root/"models"/"faster-whisper"`; `hf_home = repo_root/"models"/"huggingface"`; `temp_dir = repo_root/".data"/"tmp"`; `audio_store_dir = repo_root/".data"/"audio"`; `database_url = "postgresql+psycopg://stt:stt@127.0.0.1:25432/stt"`; `whisper_model = "large-v3-turbo"`; `device="cuda"`; `compute_type="float16"`; `max_upload_bytes = 100*1024*1024`; `max_sync_duration_s = 180.0`; `sync_duration_tolerance_s = 0.5`. `apply_runtime_env()` sets the cache env vars and `mkdir(parents=True, exist_ok=True)` for `temp_dir`/`audio_store_dir`. `@lru_cache get_settings()`.
+- [x] **Step 4: core/config.py** — `Settings(BaseSettings)` with `env_prefix="STT_"`, `env_file=".env"`, defaults: `repo_root = Path(__file__).resolve().parents[4]` (config.py → core → stt_platform → src → backend → local-stt); `model_dir = repo_root/"models"/"faster-whisper"`; `hf_home = repo_root/"models"/"huggingface"`; `temp_dir = repo_root/".data"/"tmp"`; `audio_store_dir = repo_root/".data"/"audio"`; `database_url = "postgresql+psycopg://stt:stt@127.0.0.1:25432/stt"`; `whisper_model = "large-v3-turbo"`; `device="cuda"`; `compute_type="float16"`; `max_upload_bytes = 100*1024*1024`; `max_sync_duration_s = 180.0`; `sync_duration_tolerance_s = 0.5`. `apply_runtime_env()` sets the cache env vars and `mkdir(parents=True, exist_ok=True)` for `temp_dir`/`audio_store_dir`. `@lru_cache get_settings()`.
 
-- [ ] **Step 5: tests first** — `test_config.py`: default `model_dir` points inside repo `models/faster-whisper`; `STT_DATABASE_URL` env override wins; `apply_runtime_env()` sets `HF_HOME` to `hf_home`. `test_cuda.py`: on `nt`, after import, PATH contains `cublas` bin dir when present; calling `register_cuda_dll_dirs()` twice does not duplicate. Run: `uv run pytest tests/unit/test_config.py tests/unit/test_cuda.py -v` → FAIL (module missing) → implement cuda/config → PASS.
+- [x] **Step 5: tests first** — `test_config.py`: default `model_dir` points inside repo `models/faster-whisper`; `STT_DATABASE_URL` env override wins; `apply_runtime_env()` sets `HF_HOME` to `hf_home`. `test_cuda.py`: on `nt`, after import, PATH contains `cublas` bin dir when present; calling `register_cuda_dll_dirs()` twice does not duplicate. Run: `uv run pytest tests/unit/test_config.py tests/unit/test_cuda.py -v` → FAIL (module missing) → implement cuda/config → PASS.
 
-- [ ] **Step 6: compose** (exact) `infrastructure/docker-compose.yml`
+- [x] **Step 6: compose** (exact) `infrastructure/docker-compose.yml`
 
 ```yaml
 name: stt-platform
@@ -137,7 +139,7 @@ services:
 
 Start + health: `cd infrastructure && docker compose up -d postgres && docker compose ps` (wait for `healthy`). Connect check: `cd backend && uv run python -c "import psycopg; psycopg.connect('postgresql://stt:stt@127.0.0.1:25432/stt'); print('pg ok')"`.
 
-- [ ] **Step 7:** full suite `uv run pytest -q` (2 files green), **commit** `feat(backend): uv scaffold, settings, CUDA bootstrap, compose postgres`.
+- [x] **Step 7:** full suite `uv run pytest -q` (2 files green), **commit** `feat(backend): uv scaffold, settings, CUDA bootstrap, compose postgres`.
 
 ### Task 2: Canonical schemas (transcript + job) — TDD
 
@@ -151,7 +153,7 @@ Start + health: `cd infrastructure && docker compose up -d postgres && docker co
 - `domain.errors`: `AudioValidationError(code, message)`, `UploadTooLarge`, `AudioTooLong`, `ProviderError(code, message, retryable)`, `ProviderNotFound`, `JobNotFound`, `JobNotReady`, `IdempotencyConflict`, `InvalidTransition`.
 - `domain.timeline.shift_segments(segments, offset_s)` — returns shifted copies (segments + words), originals untouched.
 
-- [ ] **Step 1: failing tests** (key cases):
+- [x] **Step 1: failing tests** (key cases):
 
 ```python
 def test_granularity_segment_forbids_word_timings():
@@ -182,9 +184,9 @@ def test_shift_segments_adds_offset_to_segments_and_words():
     assert seg.start == 0.0  # original unchanged
 ```
 
-- [ ] **Step 2:** `uv run pytest tests/unit/test_schemas_transcript.py tests/unit/test_schemas_jobs.py tests/unit/test_timeline.py -v` → FAIL (ImportError).
-- [ ] **Step 3:** implement — validators: `end > start`; ordered non-decreasing starts; `end <= audio_duration_s + 0.5`; granularity↔words rule; `text` stripped non-empty (segments; full text may be empty for silence); ErrorCode enum: `INVALID_REQUEST, UNSUPPORTED_MEDIA, PAYLOAD_TOO_LARGE, AUDIO_TOO_LONG, PROVIDER_NOT_FOUND, JOB_NOT_FOUND, JOB_NOT_READY, IDEMPOTENCY_CONFLICT, PROVIDER_ERROR, INTERNAL_ERROR, NOT_IMPLEMENTED`; `ErrorResponse(code, message, details|None)`; `JobFailure(code, message, retryable, provider_code|None)`; `AudioMetadata(format, codec, sample_rate, channels, duration_s)`; `JobRecord` as in architecture §7 with `datetime` (tz-aware) fields.
-- [ ] **Step 4:** all three files PASS; full suite PASS; **commit** `feat(backend): canonical transcript/job schemas, transition map, timeline shift`.
+- [x] **Step 2:** `uv run pytest tests/unit/test_schemas_transcript.py tests/unit/test_schemas_jobs.py tests/unit/test_timeline.py -v` → FAIL (ImportError).
+- [x] **Step 3:** implement — validators: `end > start`; ordered non-decreasing starts; `end <= audio_duration_s + 0.5`; granularity↔words rule; `text` stripped non-empty (segments; full text may be empty for silence); ErrorCode enum: `INVALID_REQUEST, UNSUPPORTED_MEDIA, PAYLOAD_TOO_LARGE, AUDIO_TOO_LONG, PROVIDER_NOT_FOUND, JOB_NOT_FOUND, JOB_NOT_READY, IDEMPOTENCY_CONFLICT, PROVIDER_ERROR, INTERNAL_ERROR, NOT_IMPLEMENTED`; `ErrorResponse(code, message, details|None)`; `JobFailure(code, message, retryable, provider_code|None)`; `AudioMetadata(format, codec, sample_rate, channels, duration_s)`; `JobRecord` as in architecture §7 with `datetime` (tz-aware) fields.
+- [x] **Step 4:** all three files PASS; full suite PASS; **commit** `feat(backend): canonical transcript/job schemas, transition map, timeline shift`.
 
 ### Task 3: Audio inspection and validation — TDD
 
@@ -195,7 +197,7 @@ def test_shift_segments_adds_offset_to_segments_and_words():
 - `validate_upload(path: Path, settings: Settings) -> AudioInfo` — size check first (no probe) → `UploadTooLarge`; probe → duration > `max_sync_duration_s` → `AudioTooLong`; extension never consulted.
 - Fixtures: `make_wav(tmp_path, seconds=2.0, freq=440, sr=16000)` via `ffmpeg -f lavfi -i "sine=frequency=440:duration=2" -ar 16000 -ac 1 out.wav`; `make_mp3` likewise.
 
-- [ ] **Step 1: failing tests**:
+- [x] **Step 1: failing tests**:
 
 ```python
 def test_reads_content_regardless_of_extension(tmp_path):
@@ -226,7 +228,7 @@ def test_duration_limit(tmp_path):
         # settings fixture: max_sync_duration_s=1.0
 ```
 
-- [ ] **Step 2:** run → FAIL; **Step 3:** implement (ffprobe wrapper as in architecture; `creationflags=subprocess.CREATE_NO_WINDOW if os.name=="nt" else 0`); **Step 4:** PASS + full suite; **commit** `feat(backend): audio inspection and content-based validation`.
+- [x] **Step 2:** run → FAIL; **Step 3:** implement (ffprobe wrapper as in architecture; `creationflags=subprocess.CREATE_NO_WINDOW if os.name=="nt" else 0`); **Step 4:** PASS + full suite; **commit** `feat(backend): audio inspection and content-based validation`.
 
 ### Task 4: Provider contract and registry — TDD
 
@@ -240,7 +242,7 @@ def test_duration_limit(tmp_path):
 - `ProviderHealth(status: Literal["ok","degraded","unavailable"], detail: str|None)`, `ProviderInfo(id, name, is_local, capabilities, health)`
 - `ProviderRegistry.register(p)`, `.get(id)` (→ `ProviderNotFound`), `.all() -> list[ProviderInfo]`, `.default_id`.
 
-- [ ] **Step 1: failing tests** — contract suite applied to `FakeProvider`:
+- [x] **Step 1: failing tests** — contract suite applied to `FakeProvider`:
 
 ```python
 def test_fake_provider_satisfies_contract():
@@ -264,7 +266,7 @@ def test_registry_unknown_provider_raises(): # get("nope") -> ProviderNotFound
 def test_registry_rejects_duplicate_ids():   # ValueError
 ```
 
-- [ ] **Step 2:** FAIL; **Step 3:** implement base + registry + `tests/fakes.py`; **Step 4:** PASS + suite; **commit** `feat(backend): provider contract, capabilities model, registry`.
+- [x] **Step 2:** FAIL; **Step 3:** implement base + registry + `tests/fakes.py`; **Step 4:** PASS + suite; **commit** `feat(backend): provider contract, capabilities model, registry`.
 
 ### Task 5: Faster-Whisper adapter — TDD (unit + GPU)
 
@@ -272,7 +274,7 @@ def test_registry_rejects_duplicate_ids():   # ValueError
 
 **Interfaces:** `FasterWhisperProvider(settings, engine_factory=None)`, `id="faster-whisper"`, `is_local=True`; lazy singleton engine (constructed on first `transcribe`, once per process); `WHISPER_LANGUAGE_CODES: list[str]` module constant (99 codes, documented source; test asserts len ≥ 95 and contains `en`, `hi`). Mapping helper `_to_provider_transcript(segments_iter, info, offset_s)` rounds to 3 decimals, strips text, maps `word.probability → confidence`.
 
-- [ ] **Step 1: failing unit tests** (fake engine object returning canned segments/words/info):
+- [x] **Step 1: failing unit tests** (fake engine object returning canned segments/words/info):
 
 ```python
 def test_maps_segments_and_words_to_canonical(fake_settings):
@@ -293,8 +295,8 @@ def test_inference_crash_is_transient(fake_settings):
     # engine.transcribe raises RuntimeError -> ProviderError(retryable=True)
 ```
 
-- [ ] **Step 2:** FAIL; **Step 3:** implement adapter (bootstrap via `core.cuda` import first; `engine = WhisperModel(settings.whisper_model, device=settings.device, compute_type=settings.compute_type, download_root=str(settings.model_dir), cpu_threads=4)`; `apply_runtime_env()` before construction; transcribe params `beam_size=5, vad_filter=True, word_timestamps=True, condition_on_previous_text=False`).
-- [ ] **Step 4:** unit PASS; **Step 5: GPU tests** (`-m gpu`, skip if `not torch-free cuda?` → skip if `ctranslate2.get_cuda_device_count() == 0` or `audio/sample.wav` missing):
+- [x] **Step 2:** FAIL; **Step 3:** implement adapter (bootstrap via `core.cuda` import first; `engine = WhisperModel(settings.whisper_model, device=settings.device, compute_type=settings.compute_type, download_root=str(settings.model_dir), cpu_threads=4)`; `apply_runtime_env()` before construction; transcribe params `beam_size=5, vad_filter=True, word_timestamps=True, condition_on_previous_text=False`).
+- [x] **Step 4:** unit PASS; **Step 5: GPU tests** (`-m gpu`, skip if `not torch-free cuda?` → skip if `ctranslate2.get_cuda_device_count() == 0` or `audio/sample.wav` missing):
 
 ```python
 def test_gpu_transcribes_sample_with_word_timestamps(...):
@@ -313,7 +315,7 @@ Run: `uv run pytest -m gpu -q` (expect ~10-20 s incl. 4.7 s load). **Step 6:** f
 
 **Interfaces:** `JobRepository(session)`: `create(job: JobRecord) -> JobRecord`; `get(job_id, scope="local") -> JobRecord` (raise `JobNotFound`); `find_by_idempotency(scope, key) -> JobRecord|None`; `append_transition(job_id, from_status, to_status, detail=None)` (validates via `ALLOWED_TRANSITIONS` → `InvalidTransition`); `set_status(job_id, to_status, **fields)`; `save_result(job_id, transcript: TranscriptResult)`; `load_result(job_id) -> TranscriptResult|None`. Tables: `jobs` (uuid str pk, scope, status varchar(16), requested_provider, actual_provider, model, model_version, language_requested, language_detected, audio_format/codec/sample_rate/channels/duration_s, audio_path, idempotency_key, request_fingerprint, attempt_count, failure jsonb, options jsonb, transcript jsonb, created_at/updated_at/started_at/completed_at, unique index on (scope, idempotency_key) where key not null), `job_transitions` (id serial, job_id fk, from_status, to_status, detail jsonb, at).
 
-- [ ] **Step 1: conftest** (exact):
+- [x] **Step 1: conftest** (exact):
 
 ```python
 import os
@@ -326,8 +328,8 @@ def pg_url():
         yield url
 ```
 
-- [ ] **Step 2: failing tests** — create/read round-trip; transition trail append + invalid transition raises; unique idempotency lookup; result save/load round-trip; migration test: `alembic upgrade head` → tables exist (`inspect(engine).get_table_names()`), `downgrade base` → gone.
-- [ ] **Step 3:** run `uv run pytest tests/integration/test_persistence.py -v` → FAIL (no module / no tables). **Step 4:** implement models + alembic; **Step 5:** PASS + suite; **commit** `feat(backend): postgres persistence and alembic migrations`.
+- [x] **Step 2: failing tests** — create/read round-trip; transition trail append + invalid transition raises; unique idempotency lookup; result save/load round-trip; migration test: `alembic upgrade head` → tables exist (`inspect(engine).get_table_names()`), `downgrade base` → gone.
+- [x] **Step 3:** run `uv run pytest tests/integration/test_persistence.py -v` → FAIL (no module / no tables). **Step 4:** implement models + alembic; **Step 5:** PASS + suite; **commit** `feat(backend): postgres persistence and alembic migrations`.
 
 ### Task 7: Job service — idempotent creation, sync processing — TDD
 
@@ -341,7 +343,7 @@ def pg_url():
 
 **Behavior:** idempotent replay returns original row without reprocessing; different fingerprint same key → `IdempotencyConflict`. Happy path transition trail exactly `ACCEPTED→VALIDATING→STORED→QUEUED→PROCESSING→SUCCEEDED` (each persisted). Validation failure → `FAILED` (failure.retryable False, code from `AudioValidationError`); transient provider failure → `FAILED` retryable True; `retry()` → second attempt succeeds → trail shows second `QUEUED→PROCESSING→SUCCEEDED` block, `attempt_count==2`. `provider_id=None` → registry default; unknown → `ProviderNotFound`.
 
-- [ ] **Step 1: failing tests** (integration: real PG container + `FakeProvider` + generated wav fixture; assert trail order from `job_transitions`; assert duplicate submission → same `job.id` and exactly one `PROCESSING` transition). **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS + suite; **commit** `feat(backend): job service with idempotency and state trail`.
+- [x] **Step 1: failing tests** (integration: real PG container + `FakeProvider` + generated wav fixture; assert trail order from `job_transitions`; assert duplicate submission → same `job.id` and exactly one `PROCESSING` transition). **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS + suite; **commit** `feat(backend): job service with idempotency and state trail`.
 
 ### Task 8: API `/v1` — TDD
 
@@ -351,15 +353,15 @@ def pg_url():
 
 **Error mapping (pinned):** UNDECODABLE→415 `UNSUPPORTED_MEDIA`; UploadTooLarge→413; AudioTooLong→422; ProviderNotFound→422; JobNotFound→404; JobNotReady→409; IdempotencyConflict→409; ProviderError→502; unknown→500 `INTERNAL_ERROR`; all bodies `ErrorResponse`.
 
-- [ ] **Step 1: failing tests** — full fake-provider flow over ASGI (`httpx.ASGITransport`): upload generated wav → 201 → `GET` shows SUCCEEDED → result equals fake transcript; idempotency replay → same id, single job; text-as-wav → 415 body `UNSUPPORTED_MEDIA`; unknown provider → 422; cancel → 501; ready endpoint with DB down (bad url override) → 503; `test_openapi.py` asserts the 8 paths exist and POST request body contains the multipart schema.
-- [ ] **Step 2:** FAIL. **Step 3:** implement routers + handlers + deps (service built in app state; tests inject fake registry + pg container via dependency override). **Step 4:** PASS + suite; **commit** `feat(backend): v1 transcription, providers, health endpoints`.
+- [x] **Step 1: failing tests** — full fake-provider flow over ASGI (`httpx.ASGITransport`): upload generated wav → 201 → `GET` shows SUCCEEDED → result equals fake transcript; idempotency replay → same id, single job; text-as-wav → 415 body `UNSUPPORTED_MEDIA`; unknown provider → 422; cancel → 501; ready endpoint with DB down (bad url override) → 503; `test_openapi.py` asserts the 8 paths exist and POST request body contains the multipart schema.
+- [x] **Step 2:** FAIL. **Step 3:** implement routers + handlers + deps (service built in app state; tests inject fake registry + pg container via dependency override). **Step 4:** PASS + suite; **commit** `feat(backend): v1 transcription, providers, health endpoints`.
 
 ### Task 9: Wire-up, docs, phase report
 
-- [ ] **Step 1:** `main.py` app factory final; `backend/.env.example` (`STT_DATABASE_URL=…25432…`); `backend/README.md` (uv sync / compose / run / test commands incl. `-m gpu`); `docs/api.md` (endpoint walkthrough + example curl/JSON for the real flow); `docs/reliability.md` (Phase 1 semantics: transition trail, idempotency, what awaits Phase 2); root `README.md` status → Phase 1 complete.
-- [ ] **Step 2:** end-to-end manual run against real stack: compose PG up; `uv run uvicorn stt_platform.main:app --port 8200`; `curl -F file=@audio/sample.wav http://127.0.0.1:8200/v1/transcriptions` → real transcription; fetch result; verify `/v1/providers`, health endpoints. Record actual outputs.
-- [ ] **Step 3:** full gates: `uv run pytest -q` (unit+integration) **and** `uv run pytest -m gpu -q` — record real counts in report.
-- [ ] **Step 4:** write `docs/phase-1-report.md` (implemented, decisions, files, deps, commands, actual test results, limitations, next phase) and **commit** `docs(backend): phase 1 report and run documentation`.
+- [x] **Step 1:** `main.py` app factory final; `backend/.env.example` (`STT_DATABASE_URL=…25432…`); `backend/README.md` (uv sync / compose / run / test commands incl. `-m gpu`); `docs/api.md` (endpoint walkthrough + example curl/JSON for the real flow); `docs/reliability.md` (Phase 1 semantics: transition trail, idempotency, what awaits Phase 2); root `README.md` status → Phase 1 complete.
+- [x] **Step 2:** end-to-end manual run against real stack: compose PG up; `uv run uvicorn stt_platform.main:app --port 8200`; `curl -F file=@audio/sample.wav http://127.0.0.1:8200/v1/transcriptions` → real transcription; fetch result; verify `/v1/providers`, health endpoints. Record actual outputs.
+- [x] **Step 3:** full gates: `uv run pytest -q` (unit+integration) **and** `uv run pytest -m gpu -q` — record real counts in report.
+- [x] **Step 4:** write `docs/phase-1-report.md` (implemented, decisions, files, deps, commands, actual test results, limitations, next phase) and **commit** `docs(backend): phase 1 report and run documentation`.
 
 ## Self-review
 

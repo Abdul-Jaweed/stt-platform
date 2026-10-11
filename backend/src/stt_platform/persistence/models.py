@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models: jobs and their state-transition trail."""
+"""SQLAlchemy ORM models: jobs, their state-transition trail, and the outbox."""
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -47,6 +47,7 @@ class JobRow(Base):
     audio_duration_s: Mapped[float | None] = mapped_column(Float)
     audio_size_bytes: Mapped[int | None] = mapped_column(Integer)
     audio_path: Mapped[str | None] = mapped_column(String(512))
+    original_object_key: Mapped[str | None] = mapped_column(String(512))
 
     idempotency_key: Mapped[str | None] = mapped_column(String(255))
     request_fingerprint: Mapped[str | None] = mapped_column(String(64))
@@ -88,3 +89,22 @@ class JobTransitionRow(Base):
     )
 
     job = relationship("JobRow", back_populates="transitions")
+
+
+class OutboxRow(Base):
+    """Transactional outbox: a committed row guarantees eventual dispatch."""
+
+    __tablename__ = "outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    topic: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(500))

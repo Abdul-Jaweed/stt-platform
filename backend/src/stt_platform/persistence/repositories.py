@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from stt_platform.domain.errors import InvalidTransition, JobNotFound
 from stt_platform.domain.status import JobStatus, is_transition_allowed
-from stt_platform.persistence.models import JobRow, JobTransitionRow, _utcnow
+from stt_platform.persistence.models import JobRow, JobTransitionRow, OutboxRow, _utcnow
 from stt_platform.schemas.jobs import AudioMetadata, JobFailure, JobRecord
 from stt_platform.schemas.transcript import TranscriptResult
 
@@ -49,6 +49,7 @@ class JobRepository:
             language_detected=row.language_detected,
             audio=audio,
             audio_path=row.audio_path,
+            original_object_key=row.original_object_key,
             idempotency_key=row.idempotency_key,
             request_fingerprint=row.request_fingerprint,
             attempt_count=row.attempt_count,
@@ -61,15 +62,16 @@ class JobRepository:
         )
 
     # ------------------------------------------------------------------
-    # commands
+    # row building
     # ------------------------------------------------------------------
-    def create(
+    def _build_row(
         self,
         record: JobRecord,
         *,
         audio: AudioMetadata | None = None,
         audio_path: str | None = None,
-    ) -> JobRecord:
+        original_object_key: str | None = None,
+    ) -> JobRow:
         audio = audio or record.audio
         audio_path = audio_path or record.audio_path
         row = JobRow(
@@ -92,8 +94,56 @@ class JobRepository:
             row.audio_duration_s = audio.duration_s
             row.audio_size_bytes = audio.size_bytes
         row.audio_path = audio_path
+        row.original_object_key = original_object_key or record.original_object_key
+        return row
+
+    # ------------------------------------------------------------------
+    # commands
+    # ------------------------------------------------------------------
+    def create(
+        self,
+        record: JobRecord,
+        *,
+        audio: AudioMetadata | None = None,
+        audio_path: str | None = None,
+    ) -> JobRecord:
+        row = self._build_row(record, audio=audio, audio_path=audio_path)
         self._session.add(row)
         self._session.commit()
+        return self._to_record(row)
+
+    def create_with_outbox(
+        self,
+        record: JobRecord,
+        *,
+        audio: AudioMetadata | None = None,
+        audio_path: str | None = None,
+        original_object_key: str | None = None,
+        topic: str = "transcription.start",
+    ) -> JobRecord:
+        """Insert the job row AND its outbox row in ONE transaction.
+
+        Committed rows are therefore always eventually dispatched; a
+        failure rolls back both (no orphan outbox entry, no invisible job).
+        """
+        row = self._build_row(
+            record,
+            audio=audio,
+            audio_path=audio_path,
+            original_object_key=original_object_key,
+        )
+        outbox = OutboxRow(
+            job_id=record.id,
+            topic=topic,
+            payload={"job_id": record.id, "scope": record.scope},
+        )
+        self._session.add(row)
+        self._session.add(outbox)
+        try:
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
         return self._to_record(row)
 
     def get(self, job_id: str, scope: str = "local") -> JobRecord:

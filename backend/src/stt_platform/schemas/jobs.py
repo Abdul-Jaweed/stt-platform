@@ -39,6 +39,7 @@ class JobRecord(BaseModel):
     language_detected: str | None = None
     audio: AudioMetadata | None = None
     audio_path: str | None = None
+    original_object_key: str | None = None
     idempotency_key: str | None = None
     request_fingerprint: str | None = None
     attempt_count: int = 0

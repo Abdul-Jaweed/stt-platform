@@ -43,6 +43,7 @@ def _ffprobe_json(path: Path) -> dict:
             cmd,
             capture_output=True,
             timeout=PROBE_TIMEOUT_S,
+            check=False,
             creationflags=_CREATIONFLAGS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:

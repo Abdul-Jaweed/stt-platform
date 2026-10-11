@@ -50,7 +50,7 @@ class S3ObjectStore:
         )
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "S3ObjectStore":
+    def from_settings(cls, settings: Settings) -> S3ObjectStore:
         return cls(
             endpoint_url=settings.s3_endpoint,
             access_key=settings.s3_access_key,

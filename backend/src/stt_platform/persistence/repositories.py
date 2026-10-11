@@ -193,9 +193,12 @@ class JobRepository:
             row.attempt_count = row.attempt_count + 1
         if to_status in _TERMINAL:
             row.completed_at = now
-        for name, value in fields.items():
-            if hasattr(value, "model_dump"):
-                value = value.model_dump(mode="json")
+        for name, raw_value in fields.items():
+            value = (
+                raw_value.model_dump(mode="json")
+                if hasattr(raw_value, "model_dump")
+                else raw_value
+            )
             setattr(row, name, value)
         self._session.commit()
         return self._to_record(row)

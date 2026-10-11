@@ -34,7 +34,7 @@ def _schema(tmp_path) -> dict:
 
 def test_all_pinned_paths_present(tmp_path):
     schema = _schema(tmp_path)
-    assert EXPECTED_PATHS <= set(schema["paths"])
+    assert set(schema["paths"]) >= EXPECTED_PATHS
 
 
 def test_post_transcriptions_is_multipart_with_pinned_fields(tmp_path):

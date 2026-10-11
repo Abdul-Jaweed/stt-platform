@@ -163,7 +163,7 @@ class TranscriptionActivities:
         except DomainError as exc:
             # Validation failures (content, limits) do not fix themselves.
             return {"outcome": "permanent", "code": exc.code, "message": exc.message}
-        except Exception as exc:  # noqa: BLE001 - infra failure: retryable
+        except Exception as exc:
             log.warning("attempt %d for job %s failed: %r", attempt, job_id, exc)
             return {
                 "outcome": "transient",
@@ -309,7 +309,7 @@ class TranscriptionActivities:
             remote = provider.poll(ref)
         except ProviderError as exc:
             return {"state": "error", "code": exc.code, "message": exc.message}
-        except Exception as exc:  # noqa: BLE001 - transport: keep polling
+        except Exception as exc:
             return {
                 "state": "error",
                 "code": type(exc).__name__,
@@ -377,7 +377,7 @@ class TranscriptionActivities:
             supported = bool(
                 provider.cancel(RemoteJobRef(provider_job_id=row.provider_job_id))
             )
-        except Exception:  # noqa: BLE001 - best effort, never mask the cancel
+        except Exception:
             supported = False
         with deps.session_factory() as session:
             ProviderAttemptRepository(session).record(

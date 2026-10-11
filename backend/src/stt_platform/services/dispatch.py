@@ -7,7 +7,7 @@ re-dispatch of the same row is a no-op on Temporal's side.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from stt_platform.domain.errors import JobNotFound
 from stt_platform.domain.status import JobStatus
@@ -54,7 +54,7 @@ def dispatch_pending(
             continue
         try:
             starter(payload)
-        except Exception as exc:  # noqa: BLE001 - keep the row for a retry
+        except Exception as exc:
             log.warning("dispatch failed for job %s: %s", row.job_id, exc)
             outbox.mark_failed(row.id, f"{type(exc).__name__}: {exc}")
             continue

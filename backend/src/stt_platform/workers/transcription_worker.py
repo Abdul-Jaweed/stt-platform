@@ -55,7 +55,7 @@ def build_deps(settings: Settings) -> ActivityDeps:
     store = S3ObjectStore.from_settings(settings)
     try:
         store.ensure_buckets()
-    except Exception as exc:  # noqa: BLE001 - storage may be down; op fails later
+    except Exception as exc:
         log.warning("object storage not ready at startup: %r", exc)
     return ActivityDeps(
         settings=settings,
@@ -79,7 +79,7 @@ def _dispatcher_loop(settings: Settings, starter) -> None:
     while True:
         try:
             run_dispatcher_tick(settings, starter)
-        except Exception as exc:  # noqa: BLE001 - keep the loop alive
+        except Exception as exc:
             log.warning("dispatcher tick failed: %r", exc)
         time.sleep(settings.dispatch_poll_interval_s)
 

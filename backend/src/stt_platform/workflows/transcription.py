@@ -129,13 +129,13 @@ class TranscriptionWorkflow:
                     start_to_close_timeout=_TRANSITION_TIMEOUT,
                     retry_policy=_ONE_SHOT,
                 )
-            except Exception as exc:  # noqa: BLE001 - best-effort provider cancel
+            except Exception as exc:
                 workflow.logger.warning(
                     "provider-side cancellation was not possible: %r", exc
                 )
             try:
                 await self._transition(job_id, scope, "CANCELLED")
-            except Exception as exc:  # noqa: BLE001 - benign cancellation race
+            except Exception as exc:
                 workflow.logger.warning(
                     "recording CANCELLED lost the race: %r", exc
                 )

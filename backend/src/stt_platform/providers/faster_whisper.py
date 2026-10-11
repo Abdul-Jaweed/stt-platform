@@ -9,10 +9,9 @@ canonical ``models/faster-whisper`` directory via explicit
 ``download_root`` — never the user-level HF cache (ADR-003).
 """
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 import stt_platform.core.cuda  # noqa: F401  (Windows DLL registration side effect)
-
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.domain.errors import ProviderError
 from stt_platform.providers.base import ProviderTranscript, TranscriptionRequest

@@ -8,6 +8,7 @@ import uuid
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from stt_platform.domain.status import JobStatus
@@ -69,7 +70,7 @@ def test_create_with_outbox_writes_both_rows_atomically(session):
     assert rows[0].dispatched_at is None
 
     # Duplicate primary key must roll back both inserts (no orphan outbox row).
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         repo.create_with_outbox(JobRecord(id=job.id, status=JobStatus.QUEUED))
     assert len(session.execute(select(OutboxRow)).scalars().all()) == 1
     assert len(session.execute(select(JobRow)).scalars().all()) == 1

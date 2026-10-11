@@ -2,7 +2,11 @@ import pytest
 
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
-from stt_platform.domain.errors import AudioValidationError, AudioTooLong, UploadTooLarge
+from stt_platform.domain.errors import (
+    AudioTooLong,
+    AudioValidationError,
+    UploadTooLarge,
+)
 from tests.audio_fixtures import make_wav
 
 

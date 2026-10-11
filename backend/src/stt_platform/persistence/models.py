@@ -1,5 +1,5 @@
 """SQLAlchemy ORM models: jobs, their state-transition trail, and the outbox."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     DateTime,
@@ -18,7 +18,7 @@ class Base(DeclarativeBase):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class JobRow(Base):

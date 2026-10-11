@@ -5,7 +5,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
-from stt_platform.persistence.models import Base  # noqa: F401  (models import cleanly)
+from stt_platform.persistence.models import Base
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 

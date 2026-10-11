@@ -151,7 +151,7 @@ async def _run_remote_job(
         async with worker2:
             try:
                 result = await handle.result()
-            except Exception as err:  # noqa: BLE001 - returned for assertions
+            except Exception as err:
                 result = err
         executor2.shutdown(wait=False)
         return result
@@ -169,7 +169,7 @@ async def _run_remote_job(
             await handle.cancel()
         try:
             result = await handle.result()
-        except Exception as err:  # noqa: BLE001 - returned for assertions
+        except Exception as err:
             result = err
     executor.shutdown(wait=False)
     return result

@@ -263,7 +263,7 @@ class JobService:
             self._store.put_file(
                 self._store.bucket_audio, object_key_local, audio_path
             )
-        except Exception as exc:  # noqa: BLE001 - infra failure at intake
+        except Exception as exc:
             # Nothing is retryable client-side here: with no local copy the
             # original never reached storage, so re-submission is the path.
             return self._fail(
@@ -406,7 +406,7 @@ class JobService:
             return
         try:
             dispatch_pending(self._outbox_repo(), self._starter)
-        except Exception as exc:  # noqa: BLE001 - the worker loop will retry
+        except Exception as exc:
             log.warning("best-effort dispatch failed: %r", exc)
 
     def _process(
@@ -444,7 +444,7 @@ class JobService:
                 object_key = original_key(scope, job_id, audio_path.suffix)
                 try:
                     self._store.put_file(self._store.bucket_audio, object_key, audio_path)
-                except Exception as exc:  # noqa: BLE001 - infra, retryable
+                except Exception as exc:
                     return self._fail(
                         job_id,
                         DomainError(
@@ -512,7 +512,7 @@ class JobService:
                 result.model_dump_json().encode("utf-8"),
                 content_type="application/json",
             )
-        except Exception as exc:  # noqa: BLE001 - never fail a SUCCEEDED job
+        except Exception as exc:
             log.warning("artifact write failed for job %s: %r", job_id, exc)
 
     def _fail(

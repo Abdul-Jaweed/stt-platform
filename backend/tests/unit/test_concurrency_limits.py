@@ -34,7 +34,7 @@ def _run_transcribes(provider, count=2):
     def call():
         try:
             provider.transcribe(SimpleNamespace(audio_path="unused.wav", language=None))
-        except BaseException as exc:  # noqa: BLE001 - surfaced in the test
+        except BaseException as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=call) for _ in range(count)]
@@ -95,10 +95,10 @@ def test_managed_calls_proceed_while_gpu_slot_is_held():
 
     # Hold the GPU slot for the duration of the test, then assert the
     # managed client is not waiting on it (distinct semaphores).
-    assert provider._semaphore is not managed._semaphore  # noqa: SLF001
-    assert provider._semaphore.acquire(timeout=1)  # noqa: SLF001
+    assert provider._semaphore is not managed._semaphore
+    assert provider._semaphore.acquire(timeout=1)
     try:
-        assert managed._semaphore.acquire(timeout=1)  # noqa: SLF001
-        managed._semaphore.release()  # noqa: SLF001
+        assert managed._semaphore.acquire(timeout=1)
+        managed._semaphore.release()
     finally:
-        provider._semaphore.release()  # noqa: SLF001
+        provider._semaphore.release()

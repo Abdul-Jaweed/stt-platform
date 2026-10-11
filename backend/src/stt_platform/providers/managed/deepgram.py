@@ -188,9 +188,12 @@ def _model_version(metadata: dict) -> str | None:
 
 
 def _unit_float(value) -> float | None:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if 0 <= float(value) <= 1:
-            return float(value)
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0 <= float(value) <= 1
+    ):
+        return float(value)
     return None
 
 

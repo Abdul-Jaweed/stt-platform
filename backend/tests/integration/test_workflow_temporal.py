@@ -150,7 +150,7 @@ async def _run_job(
                 await handle.cancel()
             try:
                 return await handle.result()
-            except Exception as err:  # noqa: BLE001 - assert final state via PG
+            except Exception as err:
                 return err
 
 

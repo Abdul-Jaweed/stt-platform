@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,7 +34,7 @@ def test_happy_path_transitions_allowed():
         JobStatus.PROCESSING,
         JobStatus.SUCCEEDED,
     ]
-    for frm, to in zip(chain, chain[1:]):
+    for frm, to in pairwise(chain):
         assert is_transition_allowed(frm, to), f"{frm} -> {to}"
 
 

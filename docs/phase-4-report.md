@@ -34,6 +34,7 @@ frontend changes.
 ```
 backend:  uv run pytest -q                → 207 passed, 5 deselected
 backend:  uv run pytest -m gpu -q         → 2 passed, 210 deselected
+backend:  uv run ruff check src tests     → All checks passed!
 frontend: npm test                        → 12 files, 44 passed
 frontend: npm run build                   → ✓ built (87.62 kB gzip)
 e2e:      uv run python ../scripts/e2e_phase4.py → passed: true
@@ -89,6 +90,15 @@ defects were caught by the tests rather than the tests being bent:
   satisfying "never silently clamp".
 - **Registry wiring** landed in T2 (builder + no-key behaviour); the
   per-provider key-set assertions were added with each adapter.
+- **Ruff rule set pinned** (T7 close-out): the T2 `uv add` bumped ruff to
+  0.16, whose widened *default* rule set surfaced 43 findings that the
+  T1-era default (E4/E7/E9/F) never checked. `backend/pyproject.toml` now
+  pins `line-length = 100` and an explicit `select`, with `B008`
+  (FastAPI's DI idiom) and `UP042` (keeping the `(str, Enum)` mixin for
+  `JobStatus`) ignored *with reasons*. The genuine findings were fixed:
+  nested-`if` merges, `datetime.UTC`, `itertools.pairwise`, an explicit
+  `check=False` on the ffprobe probe, a loop-variable shadow, and a blind
+  `pytest.raises(Exception)` narrowed to `IntegrityError`.
 
 ## Limitations (honest)
 

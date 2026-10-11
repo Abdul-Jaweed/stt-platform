@@ -5,7 +5,6 @@ Vendor shapes are modelled on the documented batch flow:
 https://docs.sarvam.ai/api-reference/speech-to-text/stt/job/{initiate,upload,start,status,download}
 """
 import json
-from pathlib import Path
 
 import httpx
 import pytest

@@ -38,6 +38,29 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/stt_platform"]
 
+[tool.ruff]
+target-version = "py313"
+# The codebase was written at ~100 columns; E501 is enforced from here on.
+line-length = 100
+
+[tool.ruff.lint]
+# Pinned explicitly: ruff's default rule set widened in 0.16, which would
+# otherwise silently change what "clean" means across lockfile updates.
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLW"]
+ignore = [
+    # FastAPI's DI idiom (Depends/File/Form in argument defaults) is by design.
+    "B008",
+    # JobStatus keeps the (str, Enum) mixin: StrEnum would change str()
+    # semantics for a type that crosses the DB and the API wire. Changing it
+    # is a deliberate migration with its own tests, not a lint autofix.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: dict() keyword calls read better for multi-arg fixtures, and the
+# subprocess probes deliberately tolerate a non-zero exit.
+"tests/**" = ["C408", "PLW1510"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not gpu and not live_provider'"

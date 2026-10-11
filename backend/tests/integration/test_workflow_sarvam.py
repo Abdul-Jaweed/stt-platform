@@ -221,7 +221,7 @@ async def _run_job(session_factory, store, settings, provider, job_id):
     async with worker:
         try:
             result = await asyncio.wait_for(handle.result(), timeout=90)
-        except Exception as err:  # noqa: BLE001 - returned for assertions
+        except Exception as err:
             result = err
     executor.shutdown(wait=False)
     return result

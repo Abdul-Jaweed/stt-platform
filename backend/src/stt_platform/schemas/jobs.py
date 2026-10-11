@@ -1,5 +1,5 @@
 """Canonical job records."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -8,7 +8,7 @@ from stt_platform.domain.status import JobStatus
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AudioMetadata(BaseModel):

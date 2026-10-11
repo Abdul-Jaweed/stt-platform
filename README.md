@@ -158,13 +158,23 @@ VALIDATING -> STORED -> QUEUED -> PROCESSING -> RETRY_WAIT -> QUEUED -> PROCESSI
 
 | | |
 |---|---|
-| ![Upload](docs/images/ui-upload.png) | ![Recording](docs/images/ui-recorder.png) |
-| Upload a file, or record in the browser | Recording from the microphone, with timer and level |
-| ![Job](docs/images/ui-job.png) | ![Evaluations](docs/images/ui-evaluations.png) |
-| Job lifecycle tracker, provider, model, timings | Evaluation comparison, error rates as meters |
+| ![Upload](docs/images/ui-upload.png) | ![Live preview](docs/images/ui-live.png) |
+| Upload a file, or record in the browser | Live transcription while the microphone is open |
+| ![Transcript](docs/images/ui-transcript.png) | ![Transcript, light](docs/images/ui-transcript-light.png) |
+| Transcript: time gutter, segments, word chips | The same page in light mode |
+| ![Mobile](docs/images/ui-mobile.png) | ![Evaluations](docs/images/ui-evaluations.png) |
+| Mobile, light mode | Evaluation comparison, error rates as meters |
 
 The transcript page (top of this README) renders segments with word-level
 timestamps, copies the plain text in one click, and exports TXT/SRT/VTT.
+
+**Live transcription while you speak.** While the microphone is open the page
+sends the audio captured so far to `POST /v1/transcriptions/preview` every few
+seconds and shows the text as it grows. The preview is deliberately modest: it
+runs on the **local** model only (a managed API would be dialled every few
+seconds, spending quota nobody asked to spend), it creates no job, stores no
+audio, and returns `is_final: false` so it can never be mistaken for the
+transcript your chosen provider writes afterwards.
 
 **Recording in the browser.** The upload page has a *Record audio* tab: the
 browser captures the microphone with `MediaRecorder`, shows a live timer and
@@ -174,6 +184,12 @@ special case. The microphone is released on stop, on discard, and on leaving
 the page. Browser recordings are streaming WebM with **no duration header**;
 the platform measures the real duration by decoding the stream instead of
 rejecting the file (see `docs/ui.md`).
+
+**Light and dark.** The header carries a bulb: the app follows your operating
+system until you choose, remembers the choice, applies it before the first
+paint (no flash), and hands `color-scheme` to the browser so native controls —
+the audio player, selects, the file picker — match. The favicon, the app icon
+and the manifest ship with it.
 
 ## Providers
 
@@ -229,6 +245,7 @@ the health probes requires an `X-API-Key` header.
 | `POST` | `/transcriptions/{id}/cancel` | cancel a queued or running job |
 | `DELETE` | `/transcriptions/{id}` | delete job + objects + rows (tenant-scoped) |
 | `POST` | `/transcriptions/uploads/presign` | presigned upload for large files |
+| `POST` | `/transcriptions/preview` | live preview while recording — transient, local provider only |
 | `GET` | `/providers` | capability matrix with provenance per capability |
 | `POST` | `/evaluations` | run an evaluation against a reference dataset |
 | `GET` | `/evaluations`, `/evaluations/{id}` | run history and comparison |

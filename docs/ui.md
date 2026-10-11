@@ -18,10 +18,73 @@ frontend/
 
 ## Screenshots
 
-`docs/images/` holds live captures of every page (upload/recorder, recorder
-preview, job tracker, transcript, providers, evaluations); the README embeds
-the main ones and `ui-recorder-preview.png` shows a finished take before it is
-submitted.
+`docs/images/` holds live captures taken from a real browser against the real
+backend:
+
+| File | Shows |
+|---|---|
+| `ui-upload.png` | upload tab, dark |
+| `ui-recorder.png`, `ui-recorder-preview.png` | recording, and a finished take before it is submitted |
+| `ui-live.png`, `ui-live-light.png` | live transcription while recording (dark / light) |
+| `ui-transcript.png`, `ui-transcript-light.png` | the transcript page (dark / light) |
+| `ui-job.png`, `ui-job-light.png` | lifecycle tracker and job metadata |
+| `ui-providers.png`, `ui-evaluations.png` | capability matrix, evaluation comparison |
+| `ui-mobile.png` | 390 px viewport, light theme |
+
+## Theme
+
+Light and dark are the same token set, re-pointed (`:root` for dark,
+`:root[data-theme="light"]` for light); no component knows which is active.
+`useTheme` owns the rule:
+
+- an explicit choice (localStorage `stt.theme`) beats the operating system,
+  which beats the dark default;
+- while no choice has been made, a system change is followed live;
+- the choice is applied **before first paint** — `index.html` carries a tiny
+  inline script with the same rule, so a light-mode user never sees a dark
+  flash — and `main.tsx` re-applies it, keeping both in lockstep
+  (`src/shell.test.ts` asserts the key and the attribute stay in sync);
+- `color-scheme` is set alongside `data-theme`, so native controls (audio
+  player, selects, file picker, scrollbars) match without CSS hacks.
+
+The bulb in the header is the only switch: outline in dark (light is what you
+would switch *to*), lit in light. Its accessible name states the action and
+`aria-pressed` states the position — colour is never the only signal.
+
+## Icons
+
+`public/favicon.svg` is the app mark (a waveform in a rounded gradient
+square); `favicon-32.png` and `apple-touch-icon.png` are generated from the
+same geometry, and `manifest.webmanifest` lists all three. The header renders
+the identical SVG (`components/BrandMark.tsx`), so the tab and the app cannot
+drift apart.
+
+## Live transcription
+
+While the microphone is open, `useLivePreview` sends the audio captured so far
+to `POST /v1/transcriptions/preview` and shows the text that comes back — the
+whole take is re-transcribed each tick, so the text grows instead of showing
+seams.
+
+- **Local model only.** The backend refuses a managed provider with
+  `LIVE_PREVIEW_LOCAL_ONLY`; the panel says so in words.
+- **Nothing is persisted.** No job, no object, no trail — see `docs/api.md`.
+- **A preview failure never touches the recording.** The panel reports it and
+  the take carries on; the submit path is unchanged.
+- **Requests never stack.** One preview is in flight at a time, in-flight work
+  is aborted when recording stops, and the asking stops at
+  `STT_MAX_LIVE_PREVIEW_DURATION_S` (the panel says the full job takes over).
+
+## Transcript
+
+The transcript is the hero of the page and is laid out as a reading surface:
+a monospaced time gutter you can click to seek, the segment text at the
+largest size, and word chips below it that stay quiet until you look at them.
+The active segment and the active word are marked on the element, so playback
+position is visible at a glance. Per-segment copy, one-click copy of the whole
+text, and TXT/SRT/VTT export sit in the toolbar; a summary line states the
+segment count, the audio duration and the timestamp granularity actually
+present.
 
 ## Pages
 
@@ -77,7 +140,14 @@ the file size — is never used.
 - `src/components/Recorder.test.tsx`, `JobStages.test.tsx` — panel behaviour and
   the lifecycle tracker's honest handling of failed/cancelled jobs.
 - Page tests — upload (file, drop, record), job, transcript (copy, empty
-  transcript), providers, evaluations (numbers *and* meters).
+  transcript, summary), providers, evaluations (numbers *and* meters).
+- `src/lib/theme.test.ts`, `src/hooks/useTheme.test.tsx`,
+  `src/components/ThemeToggle.test.tsx` — precedence, persistence, following
+  the system only until the user chooses.
+- `src/hooks/useLivePreview.test.tsx` — cadence, the minimum-audio wait, the
+  cap, no stacking, and a failing preview leaving everything else alone.
+- `src/shell.test.ts` — the favicon set, the pre-paint theme boot and the
+  theme-colour metas in `index.html`.
 
 jsdom ships neither `MediaRecorder` nor `getUserMedia`; controllable stand-ins
 live in `src/test/mediaRecorder.ts`. jsdom's `Blob` has no `.text()` — read

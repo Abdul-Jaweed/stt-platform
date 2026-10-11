@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 
+import JobPage from "./pages/JobPage";
 import UploadPage from "./pages/UploadPage";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<UploadPage />} />
+          <Route path="/jobs/:id" element={<JobPage />} />
         </Routes>
       </main>
     </div>

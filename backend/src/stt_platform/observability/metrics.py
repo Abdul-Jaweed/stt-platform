@@ -7,10 +7,16 @@ instruments, so no call site needs a branch.
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from opentelemetry import metrics as metrics_api
-from opentelemetry.metrics import Counter, Histogram, Meter, UpDownCounter
+from opentelemetry.metrics import (
+    Counter,
+    Histogram,
+    Meter,
+    ObservableGauge,
+    Observation,
+)
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import MetricReader
 
@@ -24,10 +30,39 @@ class _State:
 
     provider: MeterProvider | None = None
     instruments: Instruments | None = None
-    last_depth: int = 0
+    runtime: dict[str, float] = field(default_factory=dict)
 
 
 _STATE = _State()
+
+# Gauge name -> (snapshot key, unit, description). The sampler thread writes
+# the snapshot; the SDK calls the callbacks when it collects, so a reading is
+# always the latest one instead of a value frozen at write time.
+_RUNTIME_GAUGES: dict[str, tuple[str, str, str]] = {
+    names.PROCESS_CPU_PERCENT: (
+        "cpu_percent",
+        "%",
+        "Process CPU usage across all threads",
+    ),
+    names.PROCESS_MEMORY_BYTES: ("memory_bytes", "By", "Process resident set size"),
+    names.GPU_UTILIZATION_PERCENT: (
+        "gpu_utilization_percent",
+        "%",
+        "GPU utilization (device 0)",
+    ),
+    names.GPU_MEMORY_BYTES: ("gpu_memory_bytes", "By", "GPU memory used (device 0)"),
+    names.QUEUE_DEPTH: ("queue_depth", "1", "Pending outbox rows (dispatch backlog)"),
+}
+
+
+def _snapshot_callback(key: str):
+    def callback(options):
+        value = _STATE.runtime.get(key)
+        if value is None:
+            return ()
+        return (Observation(float(value)),)
+
+    return callback
 
 
 @dataclass(frozen=True)
@@ -48,7 +83,7 @@ class Instruments:
     provider_errors: Counter
     provider_throttled: Counter
     storage_errors: Counter
-    queue_depth: UpDownCounter
+    runtime_gauges: tuple[ObservableGauge, ...]
 
     @classmethod
     def from_meter(cls, meter: Meter) -> Instruments:
@@ -133,10 +168,14 @@ class Instruments:
                 unit="1",
                 description="Object-storage failures",
             ),
-            queue_depth=meter.create_up_down_counter(
-                names.QUEUE_DEPTH,
-                unit="1",
-                description="Pending outbox rows (dispatch backlog)",
+            runtime_gauges=tuple(
+                meter.create_observable_gauge(
+                    metric_name,
+                    callbacks=[_snapshot_callback(key)],
+                    unit=unit,
+                    description=description,
+                )
+                for metric_name, (key, unit, description) in _RUNTIME_GAUGES.items()
             ),
         )
 
@@ -273,7 +312,16 @@ def record_storage_error(*, operation: str, error_type: str) -> None:
     )
 
 
+def set_runtime_snapshot(values: dict[str, float]) -> None:
+    """Merge fresh readings; a key that was never sampled stays absent."""
+    _STATE.runtime.update({k: float(v) for k, v in values.items()})
+
+
+def reset_runtime_snapshot() -> None:
+    """Drop all readings (a replaced provider must not serve stale gauges)."""
+    _STATE.runtime.clear()
+
+
 def set_queue_depth(pending: int) -> None:
-    """Gauge-style backlog: adjust by the delta since the last reading."""
-    instruments().queue_depth.add(pending - _STATE.last_depth)
-    _STATE.last_depth = pending
+    """Backlog reading (pending outbox rows)."""
+    set_runtime_snapshot({"queue_depth": float(pending)})

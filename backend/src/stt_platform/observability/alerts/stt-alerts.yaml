@@ -1,0 +1,195 @@
+# Prometheus alerting rules for the STT platform.
+#
+# Every expr references a metric from stt_platform.observability.names —
+# tests/unit/test_prometheus_artifacts.py fails on a name that is not
+# registered, and on a registered metric nothing here or in the dashboard
+# uses. Thresholds are starting points for a single-node deployment: raise
+# them before copying them to a shared cluster.
+groups:
+  - name: stt-api
+    rules:
+      - alert: SttApiErrorRateHigh
+        expr: |
+          sum(rate(stt_api_errors_total[5m]))
+            / clamp_min(sum(rate(stt_api_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of API responses are errors"
+          description: "Clients are seeing 4xx/5xx responses; check /v1/transcriptions input validation and dependency health."
+
+      - alert: SttApiLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(stt_api_request_duration_seconds_bucket[5m]))) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 5s"
+          description: "Request handling is slow; check database latency and the Temporal starter."
+
+      - alert: SttUploadSizeSpike
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(stt_upload_bytes_bucket[1h]))) > 200000000
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Upload p95 above 200 MB"
+          description: "Very large uploads: verify max_upload_bytes and that clients stream instead of retrying whole files."
+
+  - name: stt-jobs
+    rules:
+      - alert: SttJobsFailing
+        expr: sum(rate(stt_job_end_to_end_seconds_count{status="FAILED"}[15m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Transcription jobs are reaching FAILED"
+          description: "Check provider errors and the job's failure detail; a systematic failure usually means credentials or a provider contract change."
+
+      - alert: SttQueueBacklog
+        expr: stt_queue_depth > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 50 dispatches pending in the outbox"
+          description: "The dispatcher or Temporal is behind; workers may be saturated or the server unreachable."
+
+      - alert: SttQueueWaitHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(stt_job_queue_wait_seconds_bucket[15m]))) > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jobs wait more than 60s before processing starts"
+          description: "Capacity problem: GPU concurrency, managed concurrency, or dispatcher lag."
+
+      - alert: SttRealTimeFactorDegraded
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, provider) (rate(stt_job_real_time_factor_bucket[30m]))) > 1.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 real-time factor above 1.5 (slower than audio)"
+          description: "Transcription is not keeping up with audio duration; check GPU contention and provider latency."
+
+      - alert: SttProcessingSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, provider) (rate(stt_job_processing_seconds_bucket[15m]))) > 300
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 provider processing above 5 minutes"
+          description: "Either a slow provider or a very long recording; correlate with stt_upload_bytes."
+
+      - alert: SttAttemptsWithoutSuccess
+        expr: |
+          sum(rate(stt_job_attempts_total[15m])) > 1
+            and sum(rate(stt_job_end_to_end_seconds_count{status="SUCCEEDED"}[15m])) == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Attempts are running but nothing succeeds"
+          description: "Work is being burned without progress: check retry storms and provider errors."
+
+      - alert: SttRetryStorm
+        expr: sum(rate(stt_job_retries_total[15m])) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Retry rate above 0.5/s"
+          description: "Retries multiply provider cost; inspect the dominant error code."
+
+      - alert: SttProviderFallbacks
+        expr: sum(increase(stt_job_fallbacks_total[1h])) > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jobs were served by a provider other than the requested one"
+          description: "Check whether the requested provider is unhealthy or unregistered."
+
+  - name: stt-providers
+    rules:
+      - alert: SttProviderErrorRateHigh
+        expr: |
+          sum by (provider) (rate(stt_provider_errors_total[15m]))
+            / clamp_min(sum by (provider) (rate(stt_provider_calls_total[15m])), 0.001) > 0.2
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Provider {{ $labels.provider }} fails more than 20% of calls"
+          description: "Check credentials, quota, and the provider status page; local-only jobs never fail over silently."
+
+      - alert: SttProviderThrottled
+        expr: sum by (provider) (rate(stt_provider_throttled_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provider {{ $labels.provider }} is rate limiting us"
+          description: "Free-tier quota reached; lower managed_concurrency or spread jobs over time."
+
+  - name: stt-storage
+    rules:
+      - alert: SttStorageErrors
+        expr: sum by (operation) (rate(stt_storage_errors_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Object storage operation {{ $labels.operation }} is failing"
+          description: "Uploads, result artifacts, or audio fetches are failing; check the S3 endpoint and credentials."
+
+  - name: stt-runtime
+    rules:
+      - alert: SttProcessCpuHigh
+        expr: stt_process_cpu_percent > 90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker/API process above 90% CPU"
+          description: "Sustained CPU saturation will raise queue wait; check concurrency settings."
+
+      - alert: SttProcessMemoryHigh
+        expr: stt_process_memory_bytes > 4000000000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Process RSS above 4 GB"
+          description: "Model weights plus in-flight audio; check for large uploads and leaks."
+
+      - alert: SttGpuMemoryHigh
+        expr: stt_gpu_memory_bytes > 6000000000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU memory above 6 GB"
+          description: "Close to the card's capacity; a larger model or a concurrent job will fail."
+
+      - alert: SttGpuSaturated
+        expr: avg_over_time(stt_gpu_utilization_percent[15m]) > 95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU pinned above 95% for 15 minutes"
+          description: "Queue wait will grow; consider gpu_concurrency=1 with a smaller model, or add capacity."

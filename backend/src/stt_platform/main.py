@@ -4,13 +4,19 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.v1 import health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
-from stt_platform.observability import metrics, tracing
+from stt_platform.observability import metrics, runtime, tracing
 from stt_platform.observability.instrumentation import instrument_app
 from stt_platform.observability.logging import setup_logging
+from stt_platform.observability.prometheus import (
+    METRICS_PATH,
+    build_prometheus_reader,
+    render_metrics,
+)
 from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
@@ -58,7 +64,18 @@ def create_app(
     # Observability last: middleware added last runs first, so correlation
     # ids are bound (and the request span is opened) before anything else.
     tracing.setup_tracing(settings)
-    metrics.setup_metrics(settings)
+    metric_reader, metrics_registry = build_prometheus_reader(settings)
+    metrics.setup_metrics(settings, reader=metric_reader)
+    app.state.metrics_registry = metrics_registry
+    if metrics_registry is not None:
+        app.add_api_route(
+            METRICS_PATH,
+            lambda: Response(
+                render_metrics(metrics_registry),
+                media_type="text/plain; version=0.0.4",
+            ),
+            include_in_schema=False,
+        )
     setup_logging(settings)
     instrument_app(app)
     return app
@@ -90,4 +107,19 @@ app = create_app(
     settings=_settings,
     store=S3ObjectStore.from_settings(_settings),
     starter=_default_starter(),
+)
+
+#: The API process samples its own CPU/RSS and the dispatch backlog; the
+#: worker samples the GPU. Both are daemon threads and off unless metrics
+#: are enabled (``STT_OTEL_ENABLED``).
+def _api_queue_depth() -> int:
+    from stt_platform.persistence.outbox import OutboxRepository
+
+    with app.state.session_factory() as session:
+        return OutboxRepository(session).pending_count()
+
+
+runtime.start_runtime_sampler(
+    interval_s=_settings.runtime_sample_interval_s,
+    queue_depth_fn=_api_queue_depth,
 )

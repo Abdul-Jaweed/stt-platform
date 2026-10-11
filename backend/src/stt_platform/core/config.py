@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     otel_service_name: str = "stt-platform"
     otel_environment: str = "local"
     otel_sample_ratio: float = 1.0
+    # Runtime sampler interval for CPU/RSS/GPU/queue gauges.
+    runtime_sample_interval_s: float = 15.0
     # Logs: plain text by default (readable locally); "json" switches the
     # root handler to one redacted JSON object per line for aggregation.
     log_json: bool = False

@@ -135,6 +135,21 @@ def test_dispatcher_skips_and_spends_terminal_jobs(session_factory):
         s1.close()
 
 
+def test_pending_count_tracks_undispatched_rows(session_factory):
+    with session_factory() as session:
+        repo = JobRepository(session)
+        outbox = OutboxRepository(session)
+        assert outbox.pending_count() == 0
+
+        _queued_job(repo)
+        _queued_job(repo)
+        assert outbox.pending_count() == 2
+
+        row = outbox.claim_batch(limit=1)[0]
+        outbox.mark_dispatched(row.id)
+        assert outbox.pending_count() == 1
+
+
 def test_claim_batch_skips_locked_rows_between_dispatchers(session_factory):
     s1 = session_factory()
     s2 = session_factory()

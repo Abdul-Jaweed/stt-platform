@@ -31,6 +31,15 @@ def _record(message: str, **extra) -> logging.LogRecord:
     return record
 
 
+@pytest.fixture(autouse=True)
+def _clean_provider():
+    from stt_platform.observability import tracing
+
+    tracing.shutdown_tracing()
+    yield
+    tracing.shutdown_tracing()
+
+
 def _payload(record: logging.LogRecord) -> dict:
     return json.loads(JsonLogFormatter().format(record))
 

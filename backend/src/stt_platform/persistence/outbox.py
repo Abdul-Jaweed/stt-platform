@@ -1,5 +1,5 @@
 """Outbox repository: claim (SKIP LOCKED), mark dispatched/failed."""
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from stt_platform.persistence.models import OutboxRow, _utcnow
@@ -37,6 +37,16 @@ class OutboxRepository:
             )
             .scalars()
             .first()
+        )
+
+    def pending_count(self) -> int:
+        """Rows still waiting to be dispatched (the queue-depth reading)."""
+        return int(
+            self.session.execute(
+                select(func.count())
+                .select_from(OutboxRow)
+                .where(OutboxRow.dispatched_at.is_(None))
+            ).scalar_one()
         )
 
     def claim_batch(self, limit: int = 10) -> list[OutboxRow]:

@@ -1,0 +1,250 @@
+{
+  "title": "STT Platform — overview",
+  "uid": "stt-overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["stt", "phase-5"],
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(stt_provider_calls_total, provider)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "API request rate by route",
+      "targets": [
+        {
+          "expr": "sum by (http_route) (rate(stt_api_requests_total[5m]))",
+          "legendFormat": "{{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "API latency p95 by route",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(stt_api_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{http_route}} p95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "API errors by route and status",
+      "targets": [
+        {
+          "expr": "sum by (http_route, http_response_status_code) (rate(stt_api_errors_total[5m]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Upload size p50",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(stt_upload_bytes_bucket[15m])))",
+          "legendFormat": "p50 bytes"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Queue wait p95 (accepted to processing)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(stt_job_queue_wait_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "End-to-end duration p95 by provider",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(stt_job_end_to_end_seconds_bucket[15m])))",
+          "legendFormat": "{{provider}} p95"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Provider processing duration p95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(stt_job_processing_seconds_bucket[15m])))",
+          "legendFormat": "{{provider}} p95"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Real-time factor p95 (processing seconds per audio second)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(stt_job_real_time_factor_bucket[15m])))",
+          "legendFormat": "{{provider}} p95"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Attempts vs retries",
+      "targets": [
+        {
+          "expr": "sum(rate(stt_job_attempts_total[5m]))",
+          "legendFormat": "attempts"
+        },
+        {
+          "expr": "sum(rate(stt_job_retries_total[5m]))",
+          "legendFormat": "retries"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Provider fallbacks (requested provider not used)",
+      "targets": [
+        {
+          "expr": "sum(increase(stt_job_fallbacks_total[1h]))",
+          "legendFormat": "fallbacks/h"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Provider calls by outcome",
+      "targets": [
+        {
+          "expr": "sum by (provider, operation, outcome) (rate(stt_provider_calls_total[5m]))",
+          "legendFormat": "{{provider}} {{operation}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Provider latency p95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider, operation) (rate(stt_provider_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{provider}} {{operation}} p95"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Provider errors",
+      "targets": [
+        {
+          "expr": "sum by (provider, operation) (rate(stt_provider_errors_total[5m]))",
+          "legendFormat": "{{provider}} {{operation}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Provider throttling (HTTP 429)",
+      "targets": [
+        {
+          "expr": "sum by (provider) (rate(stt_provider_throttled_total[15m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Storage errors",
+      "targets": [
+        {
+          "expr": "sum by (operation) (rate(stt_storage_errors_total[5m]))",
+          "legendFormat": "{{operation}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Outbox queue depth (pending dispatches)",
+      "targets": [
+        {
+          "expr": "stt_queue_depth",
+          "legendFormat": "pending"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Process CPU",
+      "targets": [
+        {
+          "expr": "stt_process_cpu_percent",
+          "legendFormat": "cpu %"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Process memory (RSS)",
+      "targets": [
+        {
+          "expr": "stt_process_memory_bytes",
+          "legendFormat": "rss"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "GPU utilization",
+      "targets": [
+        {
+          "expr": "stt_gpu_utilization_percent",
+          "legendFormat": "gpu %"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "GPU memory used",
+      "targets": [
+        {
+          "expr": "stt_gpu_memory_bytes",
+          "legendFormat": "gpu memory"
+        }
+      ]
+    }
+  ]
+}

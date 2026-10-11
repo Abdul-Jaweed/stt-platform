@@ -29,7 +29,12 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
 
 from stt_platform.core.config import Settings, get_settings
+from stt_platform.observability import metrics, runtime, tracing
 from stt_platform.observability.logging import setup_logging
+from stt_platform.observability.prometheus import (
+    build_prometheus_reader,
+    start_prometheus_server,
+)
 from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
@@ -86,6 +91,17 @@ def _dispatcher_loop(settings: Settings, starter) -> None:
         time.sleep(settings.dispatch_poll_interval_s)
 
 
+def queue_depth(settings: Settings) -> int:
+    """Pending dispatches, read on a fresh short-lived connection."""
+    engine = make_engine(settings.database_url)
+    try:
+        session_factory = make_session_factory(engine)
+        with session_factory() as session:
+            return OutboxRepository(session).pending_count()
+    finally:
+        engine.dispose()
+
+
 async def main() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
@@ -95,6 +111,16 @@ async def main() -> None:
     )
     settings = get_settings()
     setup_logging(settings)
+    tracing.setup_tracing(settings)
+    metric_reader, metrics_registry = build_prometheus_reader(settings)
+    metrics.setup_metrics(settings, reader=metric_reader)
+    if metrics_registry is not None:
+        start_prometheus_server(settings, metrics_registry)
+    sampler = runtime.start_runtime_sampler(
+        interval_s=settings.runtime_sample_interval_s,
+        queue_depth_fn=lambda: queue_depth(settings),
+    )
+    log.info("runtime sampler: %s", "on" if sampler is not None else "off")
     deps = build_deps(settings)
     client = await Client.connect(
         settings.temporal_host,

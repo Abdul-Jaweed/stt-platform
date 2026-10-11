@@ -306,6 +306,11 @@ class JobService:
             return record
         raise InvalidTransition(record.status.value, JobStatus.CANCELLED.value)
 
+    def provider_requires_async(self, provider_id: str | None) -> bool:
+        """True when the selected provider only has an asynchronous API."""
+        provider = self._registry.get(provider_id)
+        return bool(provider.capabilities().async_processing)
+
     def retry_async(self, job_id: str, scope: str = "local") -> JobRecord:
         """Re-enqueue a failed asynchronous job (new outbox row)."""
         record = self._repo.get(job_id, scope)

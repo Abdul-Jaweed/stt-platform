@@ -26,8 +26,14 @@ from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import DomainError, ProviderError
 from stt_platform.domain.status import JobStatus
+from stt_platform.persistence.provider_attempts import ProviderAttemptRepository
 from stt_platform.persistence.repositories import JobRepository
-from stt_platform.providers.base import ProviderTranscript, TranscriptionRequest
+from stt_platform.providers.base import (
+    AsyncProviderProtocol,
+    ProviderTranscript,
+    RemoteJobRef,
+    TranscriptionRequest,
+)
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.storage.keys import artifact_key
@@ -137,36 +143,17 @@ class TranscriptionActivities:
                 max_duration_s=deps.settings.max_async_duration_s,
             )
 
+            if isinstance(provider, AsyncProviderProtocol):
+                # Asynchronous provider: submit once, hand polling to the
+                # workflow (durable sleeps; the reference is persisted).
+                return self._submit_remote(
+                    job_id, scope, attempt, provider, source, language
+                )
+
             transcript = provider.transcribe(
                 TranscriptionRequest(audio_path=source, language=language)
             )
-            result = _build_result(job_id, provider.id, transcript)
-            with deps.session_factory() as session:
-                JobRepository(session).save_result(job_id, result, scope=scope)
-
-            if deps.store is not None:
-                deps.store.put_bytes(
-                    deps.store.bucket_artifacts,
-                    artifact_key(scope, job_id, "transcript.json"),
-                    result.model_dump_json().encode("utf-8"),
-                    content_type="application/json",
-                )
-                if transcript.raw is not None:
-                    deps.store.put_bytes(
-                        deps.store.bucket_artifacts,
-                        artifact_key(scope, job_id, "raw.json"),
-                        json.dumps(transcript.raw).encode("utf-8"),
-                        content_type="application/json",
-                    )
-
-            return {
-                "outcome": "ok",
-                "attempt": attempt,
-                "provider": provider.id,
-                "model": transcript.model,
-                "model_version": transcript.model_version,
-                "language": transcript.language,
-            }
+            return self._finalize(job_id, scope, provider.id, transcript)
         except ProviderError as exc:
             return {
                 "outcome": "transient" if exc.retryable else "permanent",
@@ -186,6 +173,219 @@ class TranscriptionActivities:
         finally:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)
+
+    # ------------------------------------------------------------------
+    # asynchronous provider jobs
+    # ------------------------------------------------------------------
+    def _submit_remote(
+        self,
+        job_id: str,
+        scope: str,
+        attempt: int,
+        provider,
+        source: Path,
+        language: str | None,
+    ) -> dict:
+        """Submit once per attempt; a retry of the same attempt never resubmits."""
+        deps = self._deps
+        with deps.session_factory() as session:
+            repo = ProviderAttemptRepository(session)
+            existing = repo.get(job_id, attempt)
+            if (
+                existing is not None
+                and existing.state == "SUBMITTED"
+                and existing.provider_job_id
+            ):
+                return {
+                    "outcome": "pending",
+                    "provider_job_id": existing.provider_job_id,
+                }
+            if existing is not None and existing.state == "SUBMITTING":
+                return {
+                    "outcome": "transient",
+                    "code": "SUBMISSION_UNCERTAIN",
+                    "message": (
+                        "a previous submission for this attempt never "
+                        "received a provider response"
+                    ),
+                }
+            repo.record(
+                job_id=job_id,
+                scope=scope,
+                attempt=attempt,
+                provider_id=provider.id,
+                state="SUBMITTING",
+            )
+        ref = provider.submit(
+            TranscriptionRequest(audio_path=source, language=language)
+        )
+        with deps.session_factory() as session:
+            ProviderAttemptRepository(session).record(
+                job_id=job_id,
+                scope=scope,
+                attempt=attempt,
+                provider_id=provider.id,
+                state="SUBMITTED",
+                provider_job_id=ref.provider_job_id,
+                detail=ref.raw,
+            )
+        return {"outcome": "pending", "provider_job_id": ref.provider_job_id}
+
+    def _finalize(
+        self,
+        job_id: str,
+        scope: str,
+        provider_id: str,
+        transcript: ProviderTranscript,
+    ) -> dict:
+        """Persist the canonical result + artifacts; return the ok outcome."""
+        deps = self._deps
+        result = _build_result(job_id, provider_id, transcript)
+        with deps.session_factory() as session:
+            JobRepository(session).save_result(job_id, result, scope=scope)
+        if deps.store is not None:
+            deps.store.put_bytes(
+                deps.store.bucket_artifacts,
+                artifact_key(scope, job_id, "transcript.json"),
+                result.model_dump_json().encode("utf-8"),
+                content_type="application/json",
+            )
+            if transcript.raw is not None:
+                deps.store.put_bytes(
+                    deps.store.bucket_artifacts,
+                    artifact_key(scope, job_id, "raw.json"),
+                    json.dumps(transcript.raw).encode("utf-8"),
+                    content_type="application/json",
+                )
+        return {
+            "outcome": "ok",
+            "provider": provider_id,
+            "model": transcript.model,
+            "model_version": transcript.model_version,
+            "language": transcript.language,
+        }
+
+    @activity.defn(name="poll_remote")
+    def poll_remote(self, job_id: str, scope: str, attempt: int) -> dict:
+        """One poll of the provider-side job; transport errors keep the poll alive."""
+        deps = self._deps
+        with deps.session_factory() as session:
+            job_repo = JobRepository(session)
+            record = job_repo.get(job_id, scope)
+            attempt_row = ProviderAttemptRepository(session).get(job_id, attempt)
+            saved = job_repo.load_result(job_id, scope)
+        if attempt_row is None or attempt_row.provider_job_id is None:
+            return {
+                "state": "failed",
+                "code": "ATTEMPT_NOT_FOUND",
+                "message": f"attempt {attempt} has no provider reference",
+                "retryable": True,
+            }
+        provider = deps.registry.get(record.requested_provider)
+        if not isinstance(provider, AsyncProviderProtocol):
+            return {
+                "state": "failed",
+                "code": "NOT_ASYNC_PROVIDER",
+                "message": (
+                    f"provider {provider.id!r} does not implement the "
+                    "asynchronous contract"
+                ),
+                "retryable": False,
+            }
+        if attempt_row.state == "COMPLETED":
+            # Replay after the result was already persisted: idempotent done.
+            return {
+                "state": "ok",
+                "provider": saved.provider if saved else provider.id,
+                "model": saved.model if saved else None,
+                "model_version": saved.model_version if saved else None,
+                "language": saved.language if saved else None,
+            }
+        try:
+            remote = provider.poll(
+                RemoteJobRef(provider_job_id=attempt_row.provider_job_id)
+            )
+        except ProviderError as exc:
+            return {"state": "error", "code": exc.code, "message": exc.message}
+        except Exception as exc:  # noqa: BLE001 - transport: keep polling
+            return {
+                "state": "error",
+                "code": type(exc).__name__,
+                "message": str(exc)[:300],
+            }
+
+        if remote.state == "pending":
+            with deps.session_factory() as session:
+                ProviderAttemptRepository(session).record(
+                    job_id=job_id,
+                    scope=scope,
+                    attempt=attempt,
+                    provider_id=provider.id,
+                    state="PENDING",
+                )
+            return {"state": "pending"}
+        if remote.state == "failed":
+            with deps.session_factory() as session:
+                ProviderAttemptRepository(session).record(
+                    job_id=job_id,
+                    scope=scope,
+                    attempt=attempt,
+                    provider_id=provider.id,
+                    state="FAILED",
+                    detail={"code": remote.error_code},
+                )
+            return {
+                "state": "failed",
+                "code": remote.error_code or "REMOTE_FAILED",
+                "message": remote.error_message or "provider-side job failed",
+                "retryable": remote.retryable,
+            }
+        if remote.transcript is None:
+            return {
+                "state": "failed",
+                "code": "REMOTE_NO_RESULT",
+                "message": "provider completed without a transcript",
+                "retryable": True,
+            }
+        outcome = self._finalize(job_id, scope, provider.id, remote.transcript)
+        with deps.session_factory() as session:
+            ProviderAttemptRepository(session).record(
+                job_id=job_id,
+                scope=scope,
+                attempt=attempt,
+                provider_id=provider.id,
+                state="COMPLETED",
+            )
+        return {"state": "ok", **outcome}
+
+    @activity.defn(name="cancel_remote")
+    def cancel_remote(self, job_id: str, scope: str) -> dict:
+        """Best-effort provider-side cancellation of the newest open attempt."""
+        deps = self._deps
+        with deps.session_factory() as session:
+            record = JobRepository(session).get(job_id, scope)
+            row = ProviderAttemptRepository(session).latest_open(job_id, scope)
+        if row is None or row.provider_job_id is None:
+            return {"cancelled": False}
+        provider = deps.registry.get(record.requested_provider)
+        if not isinstance(provider, AsyncProviderProtocol):
+            return {"cancelled": False}
+        supported = False
+        try:
+            supported = bool(
+                provider.cancel(RemoteJobRef(provider_job_id=row.provider_job_id))
+            )
+        except Exception:  # noqa: BLE001 - best effort, never mask the cancel
+            supported = False
+        with deps.session_factory() as session:
+            ProviderAttemptRepository(session).record(
+                job_id=job_id,
+                scope=scope,
+                attempt=row.attempt,
+                provider_id=row.provider_id,
+                state="CANCELLED",
+            )
+        return {"cancelled": supported}
 
 
 def _build_result(
@@ -212,4 +412,9 @@ def make_activities(deps: ActivityDeps) -> list:
     """Bound activity callables for a Worker (the SDK needs callables
     carrying their ``@activity.defn`` marker; bound methods do)."""
     instance = TranscriptionActivities(deps)
-    return [instance.transition, instance.execute_attempt]
+    return [
+        instance.transition,
+        instance.execute_attempt,
+        instance.poll_remote,
+        instance.cancel_remote,
+    ]

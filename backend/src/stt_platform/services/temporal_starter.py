@@ -28,13 +28,27 @@ def retry_config_from_settings(settings: Settings) -> dict:
     }
 
 
+def remote_config_from_settings(settings: Settings) -> dict:
+    """Workflow-side polling parameters for asynchronous provider jobs."""
+    return {
+        "poll_interval_s": settings.remote_poll_interval_s,
+        "max_wait_s": settings.remote_max_wait_s,
+    }
+
+
 class TemporalWorkflowStarter:
     def __init__(
-        self, *, host: str, task_queue: str, retry: dict | None = None
+        self,
+        *,
+        host: str,
+        task_queue: str,
+        retry: dict | None = None,
+        remote: dict | None = None,
     ) -> None:
         self._host = host
         self._task_queue = task_queue
         self._retry = retry or {}
+        self._remote = remote or {}
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._loop.run_forever, name="temporal-starter", daemon=True
@@ -59,6 +73,7 @@ class TemporalWorkflowStarter:
             "job_id": payload["job_id"],
             "scope": payload.get("scope", "local"),
             "retry": self._retry,
+            "remote": self._remote,
         }
         try:
             await client.start_workflow(

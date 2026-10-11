@@ -62,6 +62,7 @@ def seed_job(
     scope: str = "local",
     status: JobStatus = JobStatus.QUEUED,
     corrupt: bool = False,
+    provider: str = "fake",
 ) -> str:
     """Create a job whose original audio lives in object storage."""
     job_id = str(uuid.uuid4())
@@ -77,7 +78,7 @@ def seed_job(
         repo = JobRepository(session)
         repo.create(
             JobRecord(
-                id=job_id, scope=scope, status=status, requested_provider="fake"
+                id=job_id, scope=scope, status=status, requested_provider=provider
             ),
             original_object_key=key,
         )

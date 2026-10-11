@@ -108,3 +108,34 @@ class OutboxRow(Base):
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(String(500))
+
+
+class ProviderAttemptRow(Base):
+    """One provider-side submission attempt (audit + reconciliation).
+
+    A ``SUBMITTING`` row is written *before* the provider call so a retry
+    of the same attempt can never blindly resubmit; ``SUBMITTED`` carries
+    the provider job reference the workflow polls.
+    """
+
+    __tablename__ = "provider_attempts"
+    __table_args__ = (
+        UniqueConstraint("job_id", "attempt", name="uq_provider_attempts_job_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    scope: Mapped[str] = mapped_column(String(64), nullable=False, default="local")
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_job_id: Mapped[str | None] = mapped_column(String(255))
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )

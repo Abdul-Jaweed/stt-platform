@@ -70,6 +70,7 @@ _settings = get_settings()
 def _default_starter() -> Any:
     from stt_platform.services.temporal_starter import (
         TemporalWorkflowStarter,
+        remote_config_from_settings,
         retry_config_from_settings,
     )
 
@@ -77,6 +78,7 @@ def _default_starter() -> Any:
         host=_settings.temporal_host,
         task_queue=_settings.temporal_task_queue,
         retry=retry_config_from_settings(_settings),
+        remote=remote_config_from_settings(_settings),
     )
 
 

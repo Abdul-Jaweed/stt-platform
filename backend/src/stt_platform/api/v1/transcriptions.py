@@ -110,6 +110,13 @@ def create_transcription(
             f"upload exceeds the {settings.max_upload_bytes}-byte limit"
         )
 
+    requires_async = service.provider_requires_async(provider or None)
+    if requires_async and store is None:
+        raise StorageNotConfigured(
+            "the requested provider only has an asynchronous API, "
+            "which requires object storage"
+        )
+
     settings.audio_store_dir.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "").suffix
     if not suffix[1:].isalnum():
@@ -150,7 +157,9 @@ def create_transcription(
         dest.unlink(missing_ok=True)
         raise
 
-    if store is not None and info.duration_s > settings.max_sync_duration_s:
+    if store is not None and (
+        info.duration_s > settings.max_sync_duration_s or requires_async
+    ):
         try:
             job = service.create_async(
                 audio_path=dest,

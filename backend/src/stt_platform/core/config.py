@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     temporal_host: str = "127.0.0.1:7233"
     temporal_task_queue: str = "stt-transcription"
     gpu_concurrency: int = 1
+    managed_concurrency: int = 4
+    remote_poll_interval_s: float = 5.0
+    remote_max_wait_s: float = 7200.0
     dispatch_poll_interval_s: float = 2.0
     retry_max_attempts: int = 3
     retry_base_delay_s: float = 2.0

@@ -6,6 +6,7 @@ into PostgreSQL — the trail is part of the product, not a side channel.
 Workflow code stays deterministic: delays are computed with the
 deterministic ``workflow.random()`` RNG and slept with ``workflow.sleep``.
 """
+import asyncio
 from datetime import timedelta
 
 from temporalio import workflow
@@ -15,6 +16,7 @@ from temporalio.exceptions import ActivityError, CancelledError
 from stt_platform.workers.retry import compute_backoff
 
 _ATTEMPT_TIMEOUT = timedelta(hours=4)
+_POLL_TIMEOUT = timedelta(seconds=120)
 _TRANSITION_TIMEOUT = timedelta(seconds=30)
 _ONE_SHOT = RetryPolicy(maximum_attempts=1)
 
@@ -26,6 +28,9 @@ class TranscriptionWorkflow:
         job_id = job["job_id"]
         scope = job.get("scope", "local")
         retry = job.get("retry", {})
+        remote = job.get("remote", {})
+        poll_interval = float(remote.get("poll_interval_s", 5.0))
+        max_wait = float(remote.get("max_wait_s", 7200.0))
         max_attempts = int(retry.get("max_attempts", 3))
         attempt = 0
         try:
@@ -53,6 +58,14 @@ class TranscriptionWorkflow:
                     }
 
                 verdict = outcome.get("outcome")
+                if verdict == "pending":
+                    # Asynchronous provider: the submission is durable in
+                    # provider_attempts; polling happens here so a worker
+                    # crash resumes instead of resubmitting.
+                    outcome = await self._await_remote(
+                        job_id, scope, attempt, poll_interval, max_wait
+                    )
+                    verdict = outcome.get("outcome")
                 if verdict == "ok":
                     await self._transition(
                         job_id,
@@ -102,15 +115,92 @@ class TranscriptionWorkflow:
                 )
                 await workflow.sleep(timedelta(seconds=delay))
                 await self._transition(job_id, scope, "QUEUED")
-        except CancelledError:
-            # Record CANCELLED best-effort, then propagate. The cancellation
-            # integration test verifies this write lands; a failed write here
+        except (asyncio.CancelledError, CancelledError):
+            # A cancel delivered while sleeping arrives as
+            # asyncio.CancelledError; one delivered at an activity await
+            # arrives as the SDK's CancelledError. Both must run the same
+            # cleanup: cancel the provider-side job where supported (best
+            # effort), record CANCELLED, then propagate. Failures here
             # must never mask the cancellation itself.
             try:
+                await workflow.execute_activity(
+                    "cancel_remote",
+                    args=[job_id, scope],
+                    start_to_close_timeout=_TRANSITION_TIMEOUT,
+                    retry_policy=_ONE_SHOT,
+                )
+            except Exception as exc:  # noqa: BLE001 - best-effort provider cancel
+                workflow.logger.warning(
+                    "provider-side cancellation was not possible: %r", exc
+                )
+            try:
                 await self._transition(job_id, scope, "CANCELLED")
-            except Exception:  # noqa: BLE001 - benign cancellation race
-                pass
+            except Exception as exc:  # noqa: BLE001 - benign cancellation race
+                workflow.logger.warning(
+                    "recording CANCELLED lost the race: %r", exc
+                )
             raise
+
+    async def _await_remote(
+        self,
+        job_id: str,
+        scope: str,
+        attempt: int,
+        poll_interval: float,
+        max_wait: float,
+    ) -> dict:
+        """Poll the provider-side job until done, failed, or out of time.
+
+        Transport-level poll errors keep polling (the remote job may be
+        healthy); a provider-side failure verdict ends the attempt with
+        the provider's own retryability guidance.
+        """
+        deadline = workflow.now() + timedelta(seconds=max_wait)
+        while True:
+            await workflow.sleep(timedelta(seconds=poll_interval))
+            try:
+                result = await workflow.execute_activity(
+                    "poll_remote",
+                    args=[job_id, scope, attempt],
+                    start_to_close_timeout=_POLL_TIMEOUT,
+                    retry_policy=_ONE_SHOT,
+                )
+            except ActivityError as err:
+                if workflow.cancellation_reason() is not None:
+                    raise CancelledError("workflow cancelled") from err
+                result = {
+                    "state": "error",
+                    "code": "POLL_ACTIVITY_ERROR",
+                    "message": str(err.cause or err)[:300],
+                }
+            state = result.get("state")
+            if state == "ok":
+                return {
+                    "outcome": "ok",
+                    **{
+                        key: value
+                        for key, value in result.items()
+                        if key != "state"
+                    },
+                }
+            if state == "failed":
+                return {
+                    "outcome": (
+                        "transient" if result.get("retryable") else "permanent"
+                    ),
+                    "code": result.get("code", "REMOTE_FAILED"),
+                    "message": result.get("message", ""),
+                }
+            if workflow.now() >= deadline:
+                return {
+                    "outcome": "transient",
+                    "code": "REMOTE_TIMEOUT",
+                    "message": (
+                        "provider-side job did not finish within "
+                        f"{int(max_wait)}s"
+                    ),
+                }
+            # "pending" and transport "error" both keep polling.
 
     async def _transition(
         self,

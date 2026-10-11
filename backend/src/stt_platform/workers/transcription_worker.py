@@ -33,7 +33,10 @@ from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.services.dispatch import dispatch_pending
-from stt_platform.services.temporal_starter import retry_config_from_settings
+from stt_platform.services.temporal_starter import (
+    remote_config_from_settings,
+    retry_config_from_settings,
+)
 from stt_platform.storage.s3 import S3ObjectStore
 from stt_platform.workers.activities import (
     ActivityDeps,
@@ -103,6 +106,7 @@ async def main() -> None:
                     "job_id": payload["job_id"],
                     "scope": payload.get("scope", "local"),
                     "retry": retry_config_from_settings(settings),
+                    "remote": remote_config_from_settings(settings),
                 },
                 id=payload["workflow_id"],
                 task_queue=settings.temporal_task_queue,

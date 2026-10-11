@@ -6,7 +6,7 @@ exceptions, and timestamps into these canonical types; provider SDK
 objects never escape the adapter (spec §6).
 """
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +35,30 @@ class ProviderTranscript(BaseModel):
     raw: dict | None = None
 
 
+class RemoteJobRef(BaseModel):
+    """Opaque reference to a provider-side asynchronous job."""
+
+    provider_job_id: str
+    raw: dict | None = None
+
+
+class RemoteJobState(BaseModel):
+    """One poll result for a provider-side job.
+
+    ``state`` is the provider's own verdict mapped to three values:
+    ``pending`` (keep polling), ``completed`` (transcript attached),
+    ``failed`` (terminal on the provider side; ``retryable`` carries the
+    provider's guidance, never our guess).
+    """
+
+    state: Literal["pending", "completed", "failed"]
+    transcript: ProviderTranscript | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    retryable: bool = False
+    raw: dict | None = None
+
+
 @runtime_checkable
 class ProviderProtocol(Protocol):
     id: str
@@ -46,3 +70,20 @@ class ProviderProtocol(Protocol):
     def health(self) -> ProviderHealth: ...
 
     def transcribe(self, request: TranscriptionRequest) -> ProviderTranscript: ...
+
+
+@runtime_checkable
+class AsyncProviderProtocol(Protocol):
+    """Additive contract for providers with asynchronous job APIs.
+
+    Providers may implement both protocols (a sync endpoint plus a batch
+    one); the workflow uses the async path whenever a provider implements
+    this protocol. ``cancel`` returning ``False`` means the provider has
+    no cancellation API — that is reported, never papered over.
+    """
+
+    def submit(self, request: TranscriptionRequest) -> RemoteJobRef: ...
+
+    def poll(self, ref: RemoteJobRef) -> RemoteJobState: ...
+
+    def cancel(self, ref: RemoteJobRef) -> bool: ...

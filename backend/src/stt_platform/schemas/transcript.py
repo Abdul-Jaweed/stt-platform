@@ -22,6 +22,7 @@ class TranscriptWord(BaseModel):
     end: float
     text: str
     confidence: float | None = Field(default=None, ge=0, le=1)
+    speaker: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _check(self) -> "TranscriptWord":
@@ -37,6 +38,7 @@ class TranscriptSegment(BaseModel):
     end: float
     text: str
     confidence: float | None = Field(default=None, ge=0, le=1)
+    speaker: int | None = Field(default=None, ge=0)
     words: list[TranscriptWord] = Field(default_factory=list)
 
     @model_validator(mode="after")

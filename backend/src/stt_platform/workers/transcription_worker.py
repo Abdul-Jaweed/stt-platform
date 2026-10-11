@@ -29,6 +29,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
 
 from stt_platform.core.config import Settings, get_settings
+from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.services.dispatch import dispatch_pending
@@ -93,7 +94,10 @@ async def main() -> None:
     )
     settings = get_settings()
     deps = build_deps(settings)
-    client = await Client.connect(settings.temporal_host)
+    client = await Client.connect(
+        settings.temporal_host,
+        interceptors=temporal_interceptors(settings),
+    )
     loop = asyncio.get_running_loop()
 
     async def start_workflow(payload: dict) -> None:
@@ -134,6 +138,7 @@ async def main() -> None:
         activities=make_activities(deps),
         activity_executor=executor,
         max_concurrent_activities=activity_slots,
+        interceptors=temporal_interceptors(settings),
     )
     log.info(
         "transcription worker up: queue=%s gpu_concurrency=%d "

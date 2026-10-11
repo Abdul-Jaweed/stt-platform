@@ -16,9 +16,12 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session, sessionmaker
 from temporalio import activity
 
@@ -26,6 +29,9 @@ from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import DomainError, ProviderError
 from stt_platform.domain.status import JobStatus
+from stt_platform.observability import context as obs_context
+from stt_platform.observability import metrics
+from stt_platform.observability.temporal import activity_span
 from stt_platform.persistence.provider_attempts import ProviderAttemptRepository
 from stt_platform.persistence.repositories import JobRepository
 from stt_platform.providers.base import (
@@ -40,6 +46,13 @@ from stt_platform.storage.keys import artifact_key
 from stt_platform.storage.s3 import S3ObjectStore
 
 log = logging.getLogger(__name__)
+
+
+def _provider_outcome(exc: BaseException) -> str:
+    """Rate limits are separated from ordinary failures in the metrics."""
+    if isinstance(exc, ProviderError) and exc.code == "RATE_LIMITED":
+        return "throttled"
+    return "error"
 
 
 @dataclass
@@ -70,12 +83,42 @@ class TranscriptionActivities:
         fields: dict | None = None,
     ) -> None:
         """Write one status transition; replay-safe (same status = no-op)."""
+        with activity_span(
+            "stt.transition",
+            {"stt.job_id": job_id, "stt.scope": scope, "stt.to_status": to_status},
+        ) as span:
+            token = obs_context.set_job_id(job_id)
+            try:
+                written = self._transition(
+                    job_id, scope, to_status, detail, failure, fields
+                )
+            finally:
+                obs_context.reset_job_id(token)
+            if span is not None:
+                span.set_attribute("stt.written", written)
+            if written:
+                self._record_lifecycle_metrics(job_id, scope, to_status, detail)
+
+    def _transition(
+        self,
+        job_id: str,
+        scope: str,
+        to_status: str,
+        detail: dict | None = None,
+        failure: dict | None = None,
+        fields: dict | None = None,
+    ) -> bool:
+        """Apply the transition; ``False`` when it was already applied.
+
+        Replays must not re-count lifecycle metrics, so the no-op path is
+        reported back to the caller instead of being silently swallowed.
+        """
         target = JobStatus(to_status)
         with self._deps.session_factory() as session:
             repo = JobRepository(session)
             record = repo.get(job_id, scope)
             if record.status is target:
-                return
+                return False
             repo.append_transition(
                 job_id,
                 target,
@@ -84,18 +127,72 @@ class TranscriptionActivities:
                 failure=failure,
                 **(fields or {}),
             )
+            return True
+
+    def _record_lifecycle_metrics(
+        self, job_id: str, scope: str, to_status: str, detail: dict | None
+    ) -> None:
+        """Retry and end-to-end metrics need the job's own provider/time."""
+        try:
+            with self._deps.session_factory() as session:
+                record = JobRepository(session).get(job_id, scope)
+        except Exception:  # metrics must never fail a transition
+            return
+        provider = record.requested_provider or "unknown"
+        if to_status == "RETRY_WAIT":
+            metrics.record_retry(
+                provider=provider,
+                error_code=str((detail or {}).get("code") or "unknown"),
+            )
+        elif to_status in ("SUCCEEDED", "FAILED", "CANCELLED"):
+            created = record.created_at
+            if created is None:
+                return
+            seconds = max(0.0, (datetime.now(UTC) - created).total_seconds())
+            metrics.record_end_to_end(
+                provider=provider, status=to_status, seconds=seconds
+            )
 
     # ------------------------------------------------------------------
     # one transcription attempt
     # ------------------------------------------------------------------
     @activity.defn(name="execute_attempt")
     def execute_attempt(self, job_id: str, scope: str, attempt: int) -> dict:
+        """One span per attempt; the job id rides on every child span."""
+        with activity_span(
+            "stt.attempt",
+            {"stt.job_id": job_id, "stt.scope": scope, "stt.attempt": attempt},
+        ) as span:
+            token = obs_context.set_job_id(job_id)
+            try:
+                result = self._execute_attempt(job_id, scope, attempt)
+            finally:
+                obs_context.reset_job_id(token)
+            if span is not None:
+                outcome = str(result.get("outcome", "unknown"))
+                span.set_attribute("stt.outcome", outcome)
+                if outcome != "ok":
+                    span.set_status(Status(StatusCode.ERROR))
+            return result
+
+    def _execute_attempt(self, job_id: str, scope: str, attempt: int) -> dict:
         deps = self._deps
         with deps.session_factory() as session:
             repo = JobRepository(session)
             record = repo.get(job_id, scope)
             if record.status is JobStatus.QUEUED:
                 repo.append_transition(job_id, JobStatus.PROCESSING, scope=scope)
+                created = record.created_at
+                if created is not None:
+                    metrics.record_queue_wait(
+                        provider=record.requested_provider or "unknown",
+                        seconds=max(
+                            0.0,
+                            (
+                                datetime.now(UTC) - created
+                            ).total_seconds(),
+                        ),
+                    )
             elif record.status is not JobStatus.PROCESSING:
                 return {
                     "outcome": "permanent",
@@ -150,8 +247,28 @@ class TranscriptionActivities:
                     job_id, scope, attempt, provider, source, language
                 )
 
-            transcript = provider.transcribe(
-                TranscriptionRequest(audio_path=source, language=language)
+            started = time.perf_counter()
+            try:
+                with activity_span(
+                    "stt.provider.transcribe",
+                    {"stt.provider": provider.id, "stt.operation": "transcribe"},
+                ):
+                    transcript = provider.transcribe(
+                        TranscriptionRequest(audio_path=source, language=language)
+                    )
+            except Exception as exc:
+                metrics.record_provider_call(
+                    provider=provider.id,
+                    operation="transcribe",
+                    outcome=_provider_outcome(exc),
+                    duration_s=time.perf_counter() - started,
+                )
+                raise
+            metrics.record_provider_call(
+                provider=provider.id,
+                operation="transcribe",
+                outcome="ok",
+                duration_s=time.perf_counter() - started,
             )
             return self._finalize(job_id, scope, provider.id, transcript)
         except ProviderError as exc:
@@ -216,8 +333,28 @@ class TranscriptionActivities:
                 provider_id=provider.id,
                 state="SUBMITTING",
             )
-        ref = provider.submit(
-            TranscriptionRequest(audio_path=source, language=language)
+        started = time.perf_counter()
+        try:
+            with activity_span(
+                "stt.provider.submit",
+                {"stt.provider": provider.id, "stt.operation": "submit"},
+            ):
+                ref = provider.submit(
+                    TranscriptionRequest(audio_path=source, language=language)
+                )
+        except Exception as exc:
+            metrics.record_provider_call(
+                provider=provider.id,
+                operation="submit",
+                outcome=_provider_outcome(exc),
+                duration_s=time.perf_counter() - started,
+            )
+            raise
+        metrics.record_provider_call(
+            provider=provider.id,
+            operation="submit",
+            outcome="ok",
+            duration_s=time.perf_counter() - started,
         )
         with deps.session_factory() as session:
             ProviderAttemptRepository(session).record(
@@ -240,6 +377,11 @@ class TranscriptionActivities:
     ) -> dict:
         """Persist the canonical result + artifacts; return the ok outcome."""
         deps = self._deps
+        metrics.record_processing(
+            provider=provider_id,
+            duration_s=transcript.processing_duration_s,
+            audio_duration_s=transcript.audio_duration_s,
+        )
         result = _build_result(job_id, provider_id, transcript)
         with deps.session_factory() as session:
             JobRepository(session).save_result(job_id, result, scope=scope)
@@ -268,6 +410,17 @@ class TranscriptionActivities:
     @activity.defn(name="poll_remote")
     def poll_remote(self, job_id: str, scope: str, attempt: int) -> dict:
         """One poll of the provider-side job; transport errors keep the poll alive."""
+        with activity_span(
+            "stt.poll",
+            {"stt.job_id": job_id, "stt.scope": scope, "stt.attempt": attempt},
+        ):
+            token = obs_context.set_job_id(job_id)
+            try:
+                return self._poll_remote(job_id, scope, attempt)
+            finally:
+                obs_context.reset_job_id(token)
+
+    def _poll_remote(self, job_id: str, scope: str, attempt: int) -> dict:
         deps = self._deps
         with deps.session_factory() as session:
             job_repo = JobRepository(session)
@@ -305,16 +458,39 @@ class TranscriptionActivities:
             provider_job_id=attempt_row.provider_job_id,
             raw=attempt_row.detail if isinstance(attempt_row.detail, dict) else None,
         )
+        started = time.perf_counter()
         try:
-            remote = provider.poll(ref)
+            with activity_span(
+                "stt.provider.poll",
+                {"stt.provider": provider.id, "stt.operation": "poll"},
+            ):
+                remote = provider.poll(ref)
         except ProviderError as exc:
+            metrics.record_provider_call(
+                provider=provider.id,
+                operation="poll",
+                outcome=_provider_outcome(exc),
+                duration_s=time.perf_counter() - started,
+            )
             return {"state": "error", "code": exc.code, "message": exc.message}
         except Exception as exc:
+            metrics.record_provider_call(
+                provider=provider.id,
+                operation="poll",
+                outcome="error",
+                duration_s=time.perf_counter() - started,
+            )
             return {
                 "state": "error",
                 "code": type(exc).__name__,
                 "message": str(exc)[:300],
             }
+        metrics.record_provider_call(
+            provider=provider.id,
+            operation="poll",
+            outcome="ok",
+            duration_s=time.perf_counter() - started,
+        )
 
         if remote.state == "pending":
             with deps.session_factory() as session:
@@ -363,6 +539,16 @@ class TranscriptionActivities:
     @activity.defn(name="cancel_remote")
     def cancel_remote(self, job_id: str, scope: str) -> dict:
         """Best-effort provider-side cancellation of the newest open attempt."""
+        with activity_span(
+            "stt.cancel", {"stt.job_id": job_id, "stt.scope": scope}
+        ):
+            token = obs_context.set_job_id(job_id)
+            try:
+                return self._cancel_remote(job_id, scope)
+            finally:
+                obs_context.reset_job_id(token)
+
+    def _cancel_remote(self, job_id: str, scope: str) -> dict:
         deps = self._deps
         with deps.session_factory() as session:
             record = JobRepository(session).get(job_id, scope)

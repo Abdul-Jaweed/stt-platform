@@ -10,6 +10,7 @@ from stt_platform.api.v1 import health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.observability import metrics, tracing
 from stt_platform.observability.instrumentation import instrument_app
+from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
 from stt_platform.providers.registry import ProviderRegistry
@@ -79,6 +80,7 @@ def _default_starter() -> Any:
         task_queue=_settings.temporal_task_queue,
         retry=retry_config_from_settings(_settings),
         remote=remote_config_from_settings(_settings),
+        interceptors=temporal_interceptors(_settings),
     )
 
 

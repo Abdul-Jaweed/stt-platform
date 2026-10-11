@@ -44,11 +44,13 @@ class TemporalWorkflowStarter:
         task_queue: str,
         retry: dict | None = None,
         remote: dict | None = None,
+        interceptors: list | None = None,
     ) -> None:
         self._host = host
         self._task_queue = task_queue
         self._retry = retry or {}
         self._remote = remote or {}
+        self._interceptors = interceptors or []
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._loop.run_forever, name="temporal-starter", daemon=True
@@ -64,7 +66,10 @@ class TemporalWorkflowStarter:
 
     async def _client_async(self) -> Client:
         if self._client is None:
-            self._client = await Client.connect(self._host)
+            self._client = await Client.connect(
+                self._host,
+                interceptors=self._interceptors,
+            )
         return self._client
 
     async def _start(self, payload: dict) -> None:

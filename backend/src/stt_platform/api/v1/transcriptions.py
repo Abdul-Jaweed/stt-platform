@@ -6,6 +6,10 @@ object storage is configured, so the caller gets a terminal job with a
 storage and enqueued behind Temporal; the caller gets 202 and polls the
 job. Without object storage the endpoint keeps the Phase 1 sync-only
 contract. The URL contract is identical for both paths.
+
+Very large files skip the multipart hop: ``POST
+/v1/transcriptions/uploads/presign`` hands out a one-shot PUT URL, and
+the job is then created with ``object_key`` instead of ``file``.
 """
 import uuid
 from pathlib import Path
@@ -27,31 +31,75 @@ from stt_platform.core.config import Settings
 from stt_platform.domain.errors import (
     AudioTooLong,
     AudioValidationError,
+    InvalidRequest,
+    StorageNotConfigured,
     UploadTooLarge,
 )
-from stt_platform.schemas.jobs import JobRecord
+from stt_platform.schemas.jobs import JobRecord, PresignedUpload, PresignRequest
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.jobs import JobService
+from stt_platform.storage.keys import original_key
 
 router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
 
 _CHUNK_BYTES = 1024 * 1024
 # Multipart framing overhead allowance for the Content-Length pre-check.
 _CONTENT_LENGTH_SLACK_BYTES = 64 * 1024
+# Scope is server-assigned; the auth layer will bind real tenant scopes.
+_PRESIGN_SCOPE = "local"
+
+
+@router.post("/uploads/presign", response_model=PresignedUpload)
+def presign_upload(
+    body: PresignRequest,
+    request: Request,
+) -> PresignedUpload:
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise StorageNotConfigured("presigned uploads require object storage")
+    settings: Settings = request.app.state.settings
+    key = original_key(
+        _PRESIGN_SCOPE, uuid.uuid4().hex, Path(body.filename or "").suffix
+    )
+    url = store.presign_put(
+        store.bucket_audio, key, expires_s=settings.presign_expiry_s
+    )
+    return PresignedUpload(
+        object_key=key,
+        upload_url=url,
+        expires_in_s=settings.presign_expiry_s,
+    )
 
 
 @router.post("", status_code=201, response_model=JobRecord)
 def create_transcription(
     request: Request,
     response: Response,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    object_key: str | None = Form(None),
     provider: str | None = Form(None),
     language: str | None = Form(None),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     service: JobService = Depends(get_service),
 ) -> JobRecord:
     settings: Settings = request.app.state.settings
+    store = getattr(request.app.state, "store", None)
 
+    if (file is None) == (object_key is None):
+        raise InvalidRequest("exactly one of file or object_key is required")
+
+    if object_key is not None:
+        job = service.create_async(
+            object_key=object_key,
+            provider_id=provider or None,
+            language=language or None,
+            idempotency_key=idempotency_key or None,
+        )
+        response.status_code = 202
+        response.headers["Location"] = f"/v1/transcriptions/{job.id}"
+        return job
+
+    assert file is not None  # exclusivity checked above
     declared_length = request.headers.get("content-length")
     if (
         declared_length
@@ -90,7 +138,6 @@ def create_transcription(
     # service re-validates inside the VALIDATING state regardless. The cap
     # applied here is the async one when storage is available, since the
     # request may legitimately route to the asynchronous path.
-    store = getattr(request.app.state, "store", None)
     try:
         info = validate_upload(
             dest,

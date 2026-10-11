@@ -6,7 +6,9 @@ Two execution paths share one status machine:
   unchanged: by the time POST returns the job is terminal).
 * ``create_async`` — long audio: the original is preserved in object
   storage and the job is enqueued in the transactional outbox; the worker
-  dispatcher starts the Temporal workflow that owns the rest.
+  dispatcher starts the Temporal workflow that owns the rest. The bytes
+  may arrive either as a local file (multipart upload) or via a presigned
+  PUT that went straight to storage (``object_key``).
 
 Originals live in object storage under opaque keys (opaque to clients,
 tenant-scoped); the local working copy is kept for dev-speed retries —
@@ -32,6 +34,8 @@ from stt_platform.domain.errors import (
     AudioValidationError,
     DomainError,
     IdempotencyConflict,
+    InvalidObjectKey,
+    InvalidRequest,
     InvalidTransition,
     JobNotReady,
     ProviderError,
@@ -50,7 +54,7 @@ from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.jobs import JobFailure, JobRecord
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.dispatch import dispatch_pending, workflow_id_for
-from stt_platform.storage.keys import artifact_key, original_key
+from stt_platform.storage.keys import artifact_key, is_original_key, original_key
 from stt_platform.storage.s3 import S3ObjectStore
 
 log = logging.getLogger(__name__)
@@ -64,9 +68,10 @@ def compute_fingerprint(
     provider_id: str,
     language: str | None,
     options: dict[str, Any],
-    audio_path: Path,
+    audio_path: Path | None = None,
+    object_key: str | None = None,
 ) -> str:
-    """sha256 over request parameters plus the audio bytes.
+    """sha256 over request parameters plus the audio bytes (when local).
 
     Two requests are idempotent replays iff their fingerprints match.
     Unreadable files contribute only the parameters; the job then fails
@@ -74,12 +79,17 @@ def compute_fingerprint(
     """
     hasher = hashlib.sha256()
     params = json.dumps(
-        {"provider": provider_id, "language": language, "options": options},
+        {
+            "provider": provider_id,
+            "language": language,
+            "options": options,
+            "object_key": object_key,
+        },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
     hasher.update(params)
-    if audio_path.is_file():
+    if audio_path is not None and audio_path.is_file():
         with open(audio_path, "rb") as fh:
             for chunk in iter(lambda: fh.read(_CHUNK_BYTES), b""):
                 hasher.update(chunk)
@@ -159,25 +169,40 @@ class JobService:
     def create_async(
         self,
         *,
-        audio_path: Path,
+        audio_path: Path | None = None,
+        object_key: str | None = None,
         provider_id: str | None = None,
         language: str | None = None,
         idempotency_key: str | None = None,
         options: dict[str, Any] | None = None,
         scope: str = "local",
     ) -> JobRecord:
-        """Persist the original, then enqueue; execution happens elsewhere."""
-        audio_path = Path(audio_path)
+        """Persist the original, then enqueue; execution happens elsewhere.
+
+        Exactly one source must be given: a local ``audio_path`` (the
+        bytes are uploaded here) or an ``object_key`` already uploaded via
+        the presigned flow. A presigned key is verified against this scope
+        before use; the worker re-validates whatever storage holds.
+        """
+        if audio_path is not None:
+            audio_path = Path(audio_path)
         options = options or {}
         provider = self._registry.get(provider_id)
         if self._store is None:
             raise StorageNotConfigured()
+        if (audio_path is None) == (object_key is None):
+            raise InvalidRequest(
+                "exactly one of audio_path or object_key is required"
+            )
+        if object_key is not None and not is_original_key(scope, object_key):
+            raise InvalidObjectKey()
 
         fingerprint = compute_fingerprint(
             provider_id=provider.id,
             language=language,
             options=options,
             audio_path=audio_path,
+            object_key=object_key,
         )
         existing = self._replay_or_conflict(scope, idempotency_key, fingerprint)
         if existing is not None:
@@ -198,6 +223,21 @@ class JobService:
         )
         job_id = record.id
         self._repo.append_transition(job_id, JobStatus.VALIDATING, scope=scope)
+
+        if object_key is not None:
+            # Bytes arrived via presigned PUT; there is nothing local to
+            # probe. The worker downloads and re-validates the object.
+            self._repo.append_transition(job_id, JobStatus.STORED, scope=scope)
+            record = self._repo.append_transition(
+                job_id,
+                JobStatus.QUEUED,
+                scope=scope,
+                original_object_key=object_key,
+            )
+            self._dispatch_best_effort()
+            return record
+
+        assert audio_path is not None  # exclusivity checked above
         try:
             info = validate_upload(
                 audio_path,
@@ -218,9 +258,11 @@ class JobService:
             audio_duration_s=info.duration_s,
             audio_size_bytes=info.size_bytes,
         )
-        object_key = original_key(scope, job_id, audio_path.suffix)
+        object_key_local = original_key(scope, job_id, audio_path.suffix)
         try:
-            self._store.put_file(self._store.bucket_audio, object_key, audio_path)
+            self._store.put_file(
+                self._store.bucket_audio, object_key_local, audio_path
+            )
         except Exception as exc:  # noqa: BLE001 - infra failure at intake
             # Nothing is retryable client-side here: with no local copy the
             # original never reached storage, so re-submission is the path.
@@ -238,7 +280,7 @@ class JobService:
             job_id,
             JobStatus.QUEUED,
             scope=scope,
-            original_object_key=object_key,
+            original_object_key=object_key_local,
         )
         self._dispatch_best_effort()
         return record

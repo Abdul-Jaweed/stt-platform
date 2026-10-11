@@ -36,6 +36,12 @@ class S3ObjectStore:
             region_name=region,
             verify=use_tls,
             config=BotoConfig(
+                # Pin SigV4: the default (SigV2) presigned URLs sign the
+                # request's Content-Type into the signature, so any client
+                # sending e.g. ``Content-Type: audio/wav`` gets 403
+                # SignatureDoesNotMatch. SigV4 presigns are content-type
+                # agnostic (only the host is signed).
+                signature_version="s3v4",
                 s3={"addressing_style": "path"},
                 retries={"max_attempts": 3, "mode": "standard"},
                 connect_timeout=5,

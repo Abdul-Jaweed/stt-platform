@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_bucket_audio: str = "stt-audio"
     s3_bucket_artifacts: str = "stt-artifacts"
+    presign_expiry_s: int = 900
 
     temporal_host: str = "127.0.0.1:7233"
     temporal_task_queue: str = "stt-transcription"

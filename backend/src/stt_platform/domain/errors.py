@@ -72,3 +72,20 @@ class StorageNotConfigured(DomainError):
 
     def __init__(self, message: str = "asynchronous jobs require object storage"):
         super().__init__("STORAGE_NOT_CONFIGURED", message)
+
+
+class InvalidObjectKey(DomainError):
+    """A client-supplied object key is malformed or out of scope."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "INVALID_OBJECT_KEY",
+            "object_key is not a valid upload key for this scope",
+        )
+
+
+class InvalidRequest(DomainError):
+    """Semantically invalid request the schema alone cannot reject."""
+
+    def __init__(self, message: str):
+        super().__init__("VALIDATION_ERROR", message)

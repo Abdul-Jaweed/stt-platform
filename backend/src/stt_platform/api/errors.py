@@ -15,6 +15,8 @@ from stt_platform.domain.errors import (
     AudioTooLong,
     AudioValidationError,
     IdempotencyConflict,
+    InvalidObjectKey,
+    InvalidRequest,
     InvalidTransition,
     JobNotFound,
     JobNotReady,
@@ -35,6 +37,8 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     InvalidTransition: (409, "INVALID_TRANSITION"),
     ProviderError: (502, "PROVIDER_ERROR"),
     StorageNotConfigured: (503, "STORAGE_NOT_CONFIGURED"),
+    InvalidObjectKey: (422, "INVALID_OBJECT_KEY"),
+    InvalidRequest: (422, "VALIDATION_ERROR"),
 }
 
 

@@ -49,3 +49,18 @@ class JobRecord(BaseModel):
     updated_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class PresignRequest(BaseModel):
+    """Ask for a slot to upload an original directly to object storage."""
+
+    filename: str | None = None
+
+
+class PresignedUpload(BaseModel):
+    """A one-shot PUT target; the key is opaque and scope-bound."""
+
+    object_key: str
+    upload_url: str
+    method: str = "PUT"
+    expires_in_s: int

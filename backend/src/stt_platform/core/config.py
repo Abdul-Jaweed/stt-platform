@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     s3_bucket_audio: str = "stt-audio"
     s3_bucket_artifacts: str = "stt-artifacts"
 
+    temporal_host: str = "127.0.0.1:7233"
+    temporal_task_queue: str = "stt-transcription"
+    gpu_concurrency: int = 1
+    dispatch_poll_interval_s: float = 2.0
+    retry_max_attempts: int = 3
+    retry_base_delay_s: float = 2.0
+    retry_multiplier: float = 2.0
+    retry_max_delay_s: float = 60.0
+    retry_jitter_ratio: float = 0.25
+    max_async_duration_s: float = 14400.0
+
     @model_validator(mode="after")
     def _fill_path_defaults(self) -> "Settings":
         if self.model_dir is None:

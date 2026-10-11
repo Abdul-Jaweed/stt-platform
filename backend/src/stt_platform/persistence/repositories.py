@@ -106,8 +106,14 @@ class JobRepository:
         *,
         audio: AudioMetadata | None = None,
         audio_path: str | None = None,
+        original_object_key: str | None = None,
     ) -> JobRecord:
-        row = self._build_row(record, audio=audio, audio_path=audio_path)
+        row = self._build_row(
+            record,
+            audio=audio,
+            audio_path=audio_path,
+            original_object_key=original_object_key,
+        )
         self._session.add(row)
         self._session.commit()
         return self._to_record(row)

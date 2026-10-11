@@ -6,14 +6,26 @@ The worker process also hosts the dispatcher: every
 ``dispatch_poll_interval_s`` it drains the transactional outbox into
 Temporal workflow starts, so a crash between commit and dispatch only
 delays the job by one tick.
+
+Two subtleties this file gets right:
+
+* ``async with Worker(...)`` **starts** the worker; calling
+  ``worker.run()`` inside the block double-starts the SDK bridge and
+  panics (``must only be set once: TaskLocals``). The block is kept alive
+  with an event wait instead.
+* The dispatcher thread starts workflows through the **main event
+  loop's** client (``run_coroutine_threadsafe``) instead of a second
+  Temporal client on its own loop — one bridge loop per process.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 
 from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
 
 from stt_platform.core.config import Settings, get_settings
@@ -21,10 +33,7 @@ from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.services.dispatch import dispatch_pending
-from stt_platform.services.temporal_starter import (
-    TemporalWorkflowStarter,
-    retry_config_from_settings,
-)
+from stt_platform.services.temporal_starter import retry_config_from_settings
 from stt_platform.storage.s3 import S3ObjectStore
 from stt_platform.workers.activities import (
     ActivityDeps,
@@ -84,11 +93,28 @@ async def main() -> None:
     settings = get_settings()
     deps = build_deps(settings)
     client = await Client.connect(settings.temporal_host)
-    starter = TemporalWorkflowStarter(
-        host=settings.temporal_host,
-        task_queue=settings.temporal_task_queue,
-        retry=retry_config_from_settings(settings),
-    )
+    loop = asyncio.get_running_loop()
+
+    async def start_workflow(payload: dict) -> None:
+        try:
+            await client.start_workflow(
+                "TranscriptionWorkflow",
+                {
+                    "job_id": payload["job_id"],
+                    "scope": payload.get("scope", "local"),
+                    "retry": retry_config_from_settings(settings),
+                },
+                id=payload["workflow_id"],
+                task_queue=settings.temporal_task_queue,
+            )
+        except WorkflowAlreadyStartedError:
+            return  # same outbox row re-dispatched: nothing to do
+
+    def starter(payload: dict) -> None:
+        """Sync bridge used by the dispatcher thread; main loop does the IO."""
+        future = asyncio.run_coroutine_threadsafe(start_workflow(payload), loop)
+        future.result(timeout=30)
+
     # Sync activities (ffmpeg, model inference, boto3) run in this pool;
     # max_concurrent_activities is what gates real GPU concurrency.
     executor = ThreadPoolExecutor(
@@ -109,11 +135,15 @@ async def main() -> None:
         settings.gpu_concurrency,
         settings.temporal_host,
     )
-    dispatcher = asyncio.create_task(
-        asyncio.to_thread(_dispatcher_loop, settings, starter)
-    )
+    threading.Thread(
+        target=_dispatcher_loop,
+        args=(settings, starter),
+        name="stt-dispatcher",
+        daemon=True,
+    ).start()
+    # ``async with`` starts the worker; keep it alive until interrupted.
     async with worker:
-        await asyncio.gather(worker.run(), dispatcher)
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":

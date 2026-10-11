@@ -26,20 +26,25 @@ class FakeInfo:
 
 
 class FakeEngine:
-    def __init__(self, *, raises=None, calls=None, words_present=True):
+    def __init__(self, *, raises=None, calls=None, words_present=True, words=None):
         self.raises = raises
         self.calls = calls if calls is not None else []
         self.words_present = words_present
+        self.words = words
 
     def transcribe(self, audio, **kwargs):
         self.calls.append(kwargs)
         if self.raises:
             raise self.raises
-        words_a = (
-            [FakeWord(0.0, 0.5, " hello", 0.9), FakeWord(0.5, 1.0, " world", 0.8)]
-            if self.words_present
-            else []
-        )
+        if self.words is not None:
+            words_a = self.words
+        elif self.words_present:
+            words_a = [
+                FakeWord(0.0, 0.5, " hello", 0.9),
+                FakeWord(0.5, 1.0, " world", 0.8),
+            ]
+        else:
+            words_a = []
         return iter(
             [
                 FakeSegment(0.0, 1.0, " hello world", words_a),
@@ -120,6 +125,31 @@ def test_words_available_false_for_segment_only_output(tmp_path):
     tr = adapter.transcribe(TranscriptionRequest(audio_path=Path("a.wav")))
     assert tr.words_available is False
     assert all(not s.words for s in tr.segments)
+
+
+def test_degenerate_word_timestamps_are_dropped_not_fabricated(tmp_path):
+    # Whisper occasionally emits zero-length or inverted words (seen on a
+    # real 200 s run). The canonical schema requires end > start, so the
+    # unsupported timestamps are dropped -- never clamped or invented.
+    engine = FakeEngine(
+        words=[
+            FakeWord(0.0, 0.5, " hello", 0.9),
+            FakeWord(0.5, 0.5, " uh", 0.4),      # zero length
+            FakeWord(0.6, 0.55, " hmm", 0.3),    # inverted
+            FakeWord(1.0001, 1.0002, " tiny", None),  # rounds to zero length
+            FakeWord(1.2, 1.4, " world", 0.8),
+        ]
+    )
+    adapter = make_adapter(engine, make_settings(tmp_path))
+
+    tr = adapter.transcribe(TranscriptionRequest(audio_path=Path("a.wav")))
+
+    kept = [w.text for w in tr.segments[0].words]
+    assert kept == ["hello", "world"]
+    assert tr.words_available is True
+    # The segment text itself is untouched: dropping a word's timestamp
+    # must not rewrite the transcript.
+    assert tr.segments[0].text == "hello world"
 
 
 def test_capabilities_are_local_and_document_verification(tmp_path):

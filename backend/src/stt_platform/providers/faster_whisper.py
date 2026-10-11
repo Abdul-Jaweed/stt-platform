@@ -152,15 +152,26 @@ def _to_provider_transcript(
 ) -> ProviderTranscript:
     segments: list[TranscriptSegment] = []
     for raw in raw_segments:
-        words = [
-            TranscriptWord(
-                start=round(word.start, 3),
-                end=round(word.end, 3),
-                text=word.word.strip(),
-                confidence=getattr(word, "probability", None),
+        words: list[TranscriptWord] = []
+        for word in raw.words or []:
+            start = round(word.start, 3)
+            end = round(word.end, 3)
+            if end <= start:
+                # Whisper occasionally emits zero-length or inverted words
+                # (observed on real long audio). The canonical schema
+                # requires end > start: the unsupported timestamp is
+                # dropped -- never clamped or invented. Segment timestamps
+                # are NOT filtered: a degenerate segment fails the job
+                # loudly rather than silently dropping transcript text.
+                continue
+            words.append(
+                TranscriptWord(
+                    start=start,
+                    end=end,
+                    text=word.word.strip(),
+                    confidence=getattr(word, "probability", None),
+                )
             )
-            for word in (raw.words or [])
-        ]
         segments.append(
             TranscriptSegment(
                 start=round(raw.start, 3),

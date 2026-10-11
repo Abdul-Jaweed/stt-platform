@@ -114,10 +114,14 @@ class SarvamProvider:
             confidence_scores=False,
             formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
             capability_sources={
-                "async_processing": "documented",
-                "segment_timestamps": "documented",
-                "diarization": "documented",
-                "language_detection": "documented",
+                # Live-verified 2026-10-11 (results/live_providers/result.json):
+                # batch job 20261011_d506f859... Completed in ~20 s, 1 segment
+                # 0.87-10.03 s with speaker 0, language "en-IN", and no word
+                # timings (words_available False).
+                "async_processing": "verified",
+                "segment_timestamps": "verified",
+                "diarization": "verified",
+                "language_detection": "verified",
             },
         )
 
@@ -136,6 +140,9 @@ class SarvamProvider:
         filename = path.name
         params = {
             "model": MODEL,
+            # Documented output mode; ``transcribe`` = standard transcription
+            # in the source language. Never left to a server default.
+            "mode": "transcribe",
             "language_code": _language_code(request.language),
             "with_timestamps": True,
             "with_diarization": True,
@@ -296,9 +303,22 @@ def _presigned_url(payload, field: str, filename: str) -> str:
 
 
 def _first_output_name(status: dict) -> str | None:
+    """Pick the output of a **successful** file.
+
+    The documented ``job_details[]`` entries carry ``state`` with the values
+    ``Success`` / ``API Error`` / ``Internal Server Error``; a failed file's
+    output is never downloaded. When the vendor reports no per-file state at
+    all, every entry is considered.
+    """
     details = status.get("job_details") or []
-    successful = [d for d in details if d.get("status") == "success"] or details
-    for detail in successful:
+    successful = [
+        detail
+        for detail in details
+        if str(detail.get("state") or "").strip().lower() == "success"
+    ]
+    if not successful and not all(d.get("state") is None for d in details):
+        return None
+    for detail in successful or details:
         for output in detail.get("outputs") or []:
             name = output.get("file_name")
             if isinstance(name, str) and name:

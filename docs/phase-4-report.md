@@ -107,6 +107,13 @@ defects were caught by the tests rather than the tests being bent:
   key-gated live suite (`uv run pytest -m live_provider`) is the one
   sanctioned way to flip that, and the gating itself is pinned by tests
   (deselected in default gates, collectible only when asked for).
+
+  *Superseded 2026-10-11:* free-tier keys were supplied and all three
+  managed providers were live-verified (Deepgram, ElevenLabs, Sarvam — one
+  10-second transcription each, STT endpoints only). Five real defects were
+  found and fixed under TDD; the provenance flips are pinned by
+  `tests/unit/test_capability_provenance.py`. Full record:
+  `docs/live-provider-verification.md`.
 - **Amazon Transcribe is deferred** (no verified AWS setup), as the plan
   states.
 - **Sarvam cancel is unsupported** — the vendor documents no cancel

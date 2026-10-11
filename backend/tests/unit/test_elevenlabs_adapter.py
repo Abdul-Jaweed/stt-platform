@@ -50,6 +50,9 @@ def test_multipart_request_shape(tmp_path):
     body = call.content
     assert b'name="model_id"' in body and b"scribe_v2" in body
     assert b'name="timestamps_granularity"' in body and b"word" in body
+    # Diarization is requested explicitly — the advertised capability is a
+    # real parameter, never an assumption about the vendor default.
+    assert b'name="diarize"' in body and b"true" in body
     assert b'name="language_code"' in body and b"en" in body
     assert b'name="file"' in body and b"sample.wav" in body
 
@@ -122,7 +125,12 @@ def test_capabilities_never_claim_confidence():
     assert caps.diarization is True
     assert caps.confidence_scores is False
     assert caps.async_processing is False
-    assert caps.capability_sources["word_timestamps"] == "documented"
+    # Word timings + language code came back from the 2026-10-11 live run;
+    # diarization is now requested (diarize=true) but has not been exercised
+    # live yet, so it stays "documented".
+    assert caps.capability_sources["word_timestamps"] == "verified"
+    assert caps.capability_sources["language_detection"] == "verified"
+    assert caps.capability_sources["diarization"] == "documented"
 
 
 def test_health_without_key_is_unavailable():

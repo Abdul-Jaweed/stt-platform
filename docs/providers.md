@@ -17,20 +17,22 @@ always present and is the default.
 | Auth | — | `Authorization: Token …` | `xi-api-key` | `api-subscription-key` |
 | Execution | sync | sync | sync | **async** (submit → poll → fetch) |
 | Default model | `large-v3-turbo` | `nova-3` | `scribe_v2` | `saaras:v4` |
-| Word timestamps | yes — *verified* | yes — *documented* | yes — *documented* | **no** (segment only) |
-| Segment timestamps | yes — *verified* | yes — *documented* | derived from word runs | yes — *documented* |
-| Diarization | no | yes — *documented* | yes — *documented* | yes — *documented* (beta) |
-| Word confidence | yes — *verified* | yes — *documented* | **no** — stays `None` | no |
-| Language detection | yes | yes — *documented* | yes — *documented* | auto-detect (`unknown`) |
+| Word timestamps | yes — *verified* | yes — *verified* | yes — *verified* | **no** (segment only) |
+| Segment timestamps | yes — *verified* | yes — *verified* | derived from word runs | yes — *verified* |
+| Diarization | no | yes — *verified* | yes — *documented* (requested, not yet exercised live) | yes — *verified* |
+| Word confidence | yes — *verified* | yes — *verified* | **no** — stays `None` | no |
+| Language detection | yes | yes — *verified* | yes — *verified* | yes — *verified* |
 | Cancel | — | — | — | **unsupported** (documented) |
-| Model selection | `STT_WHISPER_MODEL` | fixed `nova-3` | `STT_ELEVENLABS_MODEL_ID` | fixed `saaras:v4` |
+| Model selection | `STT_WHISPER_MODEL` | fixed `nova-3` | `STT_ELEVENLABS_MODEL_ID` | fixed `saaras:v4`, `mode=transcribe` |
 
 **Provenance rule.** `capability_sources` marks each capability
 `documented` (vendor documentation) or `verified` (our own live test with a
-real key). Managed providers are currently all `documented` — the live
-tests exist (`uv run pytest -m live_provider`, key-gated) but have not been
-run with real keys in this environment. Nothing is claimed verified without
-that run.
+real key). Deepgram, ElevenLabs, and Sarvam were live-verified on
+2026-10-11 — one 10-second transcription per provider, free tier, STT
+endpoints only; see `docs/live-provider-verification.md` for the numbers,
+the five defects that run uncovered, and the evidence paths. The flips are
+pinned by `tests/unit/test_capability_provenance.py`; a capability stays
+`documented` until a live run exercises it (ElevenLabs diarization today).
 
 ## Configuration
 

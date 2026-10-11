@@ -36,9 +36,12 @@ behind the same contract), plus a separate React + TypeScript frontend.
   registration, shared HTTP policy (error mapping, size guard, key
   redaction), GPU/managed concurrency split, honest
   `documented` vs `verified` capability sources. Amazon Transcribe
-  deferred (AWS setup unverified). Verified: 207 backend tests + 2 GPU +
-  fake-server e2e (`results/phase4_e2e/result.json`). See
-  `docs/phase-4-report.md`, `docs/providers.md`.
+  deferred (AWS setup unverified). **All three managed providers
+  live-verified 2026-10-11** with free-tier keys (one 10 s transcription
+  each, STT only) — see `docs/live-provider-verification.md`. Verified:
+  214 backend tests + 2 GPU + fake-server e2e
+  (`results/phase4_e2e/result.json`). See `docs/phase-4-report.md`,
+  `docs/providers.md`.
 
 ## Repository layout
 
@@ -106,5 +109,6 @@ npm run dev            # http://localhost:5173 (API base: VITE_API_BASE_URL)
 - `docs/phase-2-report.md` — durable processing: evidence, limitations
 - `docs/phase-3-report.md` — frontend: evidence, limitations
 - `docs/providers.md` — provider capability matrix, config, fidelity rules
+- `docs/live-provider-verification.md` — 2026-10-11 live runs: numbers, defects, evidence
 - `docs/phase-4-report.md` — managed providers: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

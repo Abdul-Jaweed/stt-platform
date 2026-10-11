@@ -35,7 +35,7 @@ def _payload() -> dict:
     return json.loads(FIXTURE.read_text())
 
 
-def _transcribe(tmp_path, provider, language="en"):
+def _transcribe(tmp_path, provider, language: str | None = "en"):
     request = TranscriptionRequest(audio_path=audio_file(tmp_path), language=language)
     return provider.transcribe(request)
 
@@ -57,6 +57,9 @@ def test_request_shape(tmp_path):
     assert query["smart_format"] == "true"
     assert query["punctuate"] == "true"
     assert query["utterances"] == "true"
+    # Diarization is requested explicitly — a capability is never claimed
+    # while the adapter does not ask the vendor for it.
+    assert query["diarize"] == "true"
     assert query["language"] == "en"
 
 
@@ -70,6 +73,19 @@ def test_language_param_omitted_when_not_requested(tmp_path):
 
     query = dict(httpx.URL(str(route.calls.last.request.url)).params)
     assert "language" not in query
+    # Auto-detection must be requested, otherwise the vendor never returns
+    # detected_language and the canonical result loses its language.
+    assert query["detect_language"] == "true"
+
+
+@respx.mock
+def test_detected_language_mapped_into_transcript(tmp_path):
+    respx.post(LISTEN_URL).mock(return_value=httpx.Response(200, json=_payload()))
+
+    transcript = _transcribe(tmp_path, make_provider(), language=None)
+
+    assert transcript.language == "en"
+    assert transcript.language_probability == 0.99
 
 
 @respx.mock
@@ -143,14 +159,17 @@ def test_unexpected_payload_is_permanent_malformed(tmp_path):
     assert err.value.retryable is False
 
 
-def test_capabilities_are_documented_not_verified():
+def test_capabilities_are_live_verified():
     caps = make_provider().capabilities()
     assert caps.word_timestamps is True
     assert caps.diarization is True
     assert caps.async_processing is False
     assert caps.confidence_scores is True
+    # Flipped from "documented" by the 2026-10-11 live run (evidence in
+    # results/live_providers/result.json); the full provenance dict is
+    # pinned in tests/unit/test_capability_provenance.py.
     for capability in ("word_timestamps", "diarization", "confidence_scores"):
-        assert caps.capability_sources[capability] == "documented"
+        assert caps.capability_sources[capability] == "verified"
 
 
 def test_health_without_key_is_unavailable():

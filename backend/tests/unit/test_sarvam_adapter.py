@@ -178,13 +178,69 @@ def _mock_status(state: str, *, job_details=None, error_message=None):
 
 
 def _output_details(filename="0.json"):
+    # Documented shape: job_details[] entries carry ``state`` with the value
+    # ``Success`` (not ``status``/``success``).
     return [
         {
             "file_name": "sample.wav",
-            "status": "success",
+            "state": "Success",
             "outputs": [{"file_name": filename}],
         }
     ]
+
+
+@respx.mock
+def test_submit_requests_transcribe_mode(tmp_path):
+    routes = _mock_submit()
+
+    make_provider().submit(_request(tmp_path))
+
+    body = json.loads(routes["init"].calls.last.request.content)
+    params = body["job_parameters"]
+    assert params["model"] == "saaras:v4"
+    # The batch API takes an explicit output mode; ``transcribe`` is the
+    # standard transcription mode and is never left to a server default.
+    assert params["mode"] == "transcribe"
+    assert params["with_timestamps"] is True
+    assert params["with_diarization"] is True
+
+
+@respx.mock
+def test_poll_completed_skips_failed_files():
+    _mock_status(
+        "Completed",
+        job_details=[
+            {
+                "file_name": "a.wav",
+                "state": "API Error",
+                "outputs": [{"file_name": "bad.json"}],
+            },
+            {
+                "file_name": "b.wav",
+                "state": "Success",
+                "outputs": [{"file_name": "1.json"}],
+            },
+        ],
+    )
+    downloads = respx.post(DOWNLOAD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job_id": "job-1",
+                "job_state": "Completed",
+                "download_urls": {"1.json": {"file_url": PRESIGNED_GET}},
+            },
+        )
+    )
+    respx.get(PRESIGNED_GET).mock(
+        return_value=httpx.Response(200, json=_result_payload())
+    )
+
+    result = make_provider().poll(RemoteJobRef(provider_job_id="job-1"))
+
+    assert result.state == "completed"
+    requested = json.loads(downloads.calls.last.request.content)["files"]
+    assert requested == ["1.json"]
 
 
 @respx.mock
@@ -335,7 +391,10 @@ def test_capabilities_declare_async_batch_without_word_timings():
     assert caps.segment_timestamps is True
     assert caps.diarization is True
     assert caps.confidence_scores is False
-    assert caps.capability_sources["async_processing"] == "documented"
+    # Flipped by the 2026-10-11 live batch job (results/live_providers/
+    # result.json); the full provenance dict is pinned in
+    # tests/unit/test_capability_provenance.py.
+    assert caps.capability_sources["async_processing"] == "verified"
 
 
 def test_health_without_key_is_unavailable():

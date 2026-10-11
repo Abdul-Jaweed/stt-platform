@@ -7,9 +7,11 @@ API shape verified against vendor documentation at implementation time:
 * https://developers.deepgram.com/docs/diarization
 
 Request: ``POST {base}/v1/listen`` with query parameters
-``model=nova-3&smart_format=true&punctuate=true&utterances=true`` (plus
-``language`` when requested), the raw audio bytes as the body, and
-``Authorization: Token <key>``.
+``model=nova-3&smart_format=true&punctuate=true&utterances=true&diarize=true``
+plus either ``language`` (when the caller pins one) or
+``detect_language=true`` (otherwise, so the vendor reports the dominant
+language), the raw audio bytes as the body, and
+``Authorization: Token <key>`` as the only auth header.
 
 Response: ``results.channels[0].alternatives[0]`` carries ``transcript``
 and ``words[]`` (``word``/``punctuated_word``, ``start``, ``end``,
@@ -84,11 +86,14 @@ class DeepgramProvider:
             confidence_scores=True,
             formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
             capability_sources={
-                "word_timestamps": "documented",
-                "segment_timestamps": "documented",
-                "diarization": "documented",
-                "confidence_scores": "documented",
-                "language_detection": "documented",
+                # Live-verified 2026-10-11 (results/live_providers/result.json):
+                # 2 utterance segments, 25 words with confidence + speakers,
+                # detected language "en", vendor duration 10.0 s.
+                "word_timestamps": "verified",
+                "segment_timestamps": "verified",
+                "diarization": "verified",
+                "confidence_scores": "verified",
+                "language_detection": "verified",
             },
         )
 
@@ -111,9 +116,17 @@ class DeepgramProvider:
             "smart_format": "true",
             "punctuate": "true",
             "utterances": "true",
+            # Requested so the advertised diarization capability is real:
+            # speakers land on words and utterances.
+            "diarize": "true",
         }
         if request.language:
             params["language"] = request.language
+        else:
+            # No pinned language: ask the vendor to detect it, otherwise the
+            # response carries no detected_language and the canonical result
+            # silently loses its language field.
+            params["detect_language"] = "true"
         content_type = (
             mimetypes.guess_type(str(request.audio_path))[0]
             or "application/octet-stream"

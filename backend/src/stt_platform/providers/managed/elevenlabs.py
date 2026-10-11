@@ -81,9 +81,14 @@ class ElevenLabsProvider:
             confidence_scores=False,
             formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
             capability_sources={
-                "word_timestamps": "documented",
+                # Live-verified 2026-10-11 (results/live_providers/result.json):
+                # 27 word timings with end > start, no per-word confidence
+                # (stays None), language code "eng".
+                "word_timestamps": "verified",
+                "language_detection": "verified",
+                # ``diarize=true`` is now sent, but no live run has exercised
+                # it yet: the source stays "documented" until one does.
                 "diarization": "documented",
-                "language_detection": "documented",
             },
         )
 
@@ -102,6 +107,9 @@ class ElevenLabsProvider:
         data = {
             "model_id": self._settings.elevenlabs_model_id,
             "timestamps_granularity": "word",
+            # Speaker labels (``words[].speaker_id`` -> ``speaker_0``); the
+            # advertised diarization capability is requested, not assumed.
+            "diarize": "true",
         }
         if request.language:
             data["language_code"] = request.language

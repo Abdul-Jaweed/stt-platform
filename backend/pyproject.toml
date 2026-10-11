@@ -40,5 +40,8 @@ packages = ["src/stt_platform"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not gpu'"
-markers = ["gpu: requires CUDA GPU and cached model"]
+addopts = "-m 'not gpu and not live_provider'"
+markers = [
+    "gpu: requires CUDA GPU and cached model",
+    "live_provider: real paid provider call; needs STT_<PROVIDER>_API_KEY (opt-in, never in default gates)",
+]

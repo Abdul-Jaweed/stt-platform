@@ -158,12 +158,23 @@ VALIDATING -> STORED -> QUEUED -> PROCESSING -> RETRY_WAIT -> QUEUED -> PROCESSI
 
 | | |
 |---|---|
-| ![Upload](docs/images/ui-upload.png) | ![Live preview](docs/images/ui-live.png) |
-| Upload a file, or record in the browser | Live transcription while the microphone is open |
-| ![Transcript](docs/images/ui-transcript.png) | ![Transcript, light](docs/images/ui-transcript-light.png) |
-| Transcript: time gutter, segments, word chips | The same page in light mode |
-| ![Mobile](docs/images/ui-mobile.png) | ![Evaluations](docs/images/ui-evaluations.png) |
-| Mobile, light mode | Evaluation comparison, error rates as meters |
+| ![Landing](docs/images/ui-landing-dark.png) | ![Landing, light](docs/images/ui-landing-light.png) |
+| The public landing page — what it does, how a job runs, how to run it | The same page in light mode |
+| ![Login](docs/images/ui-login-dark.png) | ![Upload](docs/images/ui-upload.png) |
+| Sign in: the browser holds a session cookie, never a key | Upload a file, or record in the browser |
+| ![Live preview](docs/images/ui-live.png) | ![Transcript](docs/images/ui-transcript.png) |
+| Live transcription while the microphone is open | Transcript: time gutter, segments, word chips |
+| ![Evaluations](docs/images/ui-evaluations.png) | ![Mobile](docs/images/ui-landing-mobile.png) |
+| Evaluations: summary cards, search, sortable columns, detail card | The landing page at 390 px |
+
+`/` and `/login` are public; the console sits behind a route guard that asks
+`GET /v1/auth/me` once and renders nothing until it knows the answer. The
+session is an `HttpOnly`, `SameSite=Lax` cookie and the **server** assigns the
+tenant — nothing the browser sends can change the scope, and no token is ever
+written to `localStorage`. API keys keep working alongside cookies.
+
+Every icon is a Phosphor icon; a test enforces it (no emoji standing in for an
+icon), and another enforces that no stylesheet token references itself.
 
 The transcript page (top of this README) renders segments with word-level
 timestamps, copies the plain text in one click, and exports TXT/SRT/VTT.
@@ -207,11 +218,36 @@ STT models only, one 10 s clip each — see `docs/live-provider-verification.md`
 
 ## Quickstart
 
-Prerequisites: Windows 11 (or Linux), NVIDIA GPU with CUDA for the local
-provider, `uv`, FFmpeg/ffprobe, Docker Desktop, Node 22+ for the frontend.
+**Everything, in one command** — Docker Desktop (or Docker Engine with compose
+v2) and nothing else. No Python, no Node, no Postgres on the host:
 
 ```bash
-# 1. infrastructure: Postgres, RustFS (S3), Temporal, Temporal UI
+chmod +x launch.sh
+./launch.sh                 # add "gpu" to run the local model on CUDA
+```
+
+That builds the API, worker and console images, starts Postgres, S3-compatible
+storage, Temporal and the console, migrates the schema, generates the UI
+credentials into a gitignored `.env`, and waits until the platform answers.
+
+| | |
+|---|---|
+| console | <http://127.0.0.1:8080> |
+| API + docs | <http://127.0.0.1:8200/v1> · <http://127.0.0.1:8200/docs> |
+| workflows | <http://127.0.0.1:28080> |
+
+`./launch.sh status` shows what is healthy, `./launch.sh logs api` follows the
+API, `./launch.sh stop` keeps your data. The full guide — ports, environment
+variables, GPU passthrough, backup, troubleshooting — is in
+[`docs/deployment.md`](docs/deployment.md).
+
+### From source (development)
+
+Prerequisites: `uv`, FFmpeg/ffprobe, Docker Desktop, Node 22+, and an NVIDIA
+GPU with CUDA if you want the local provider on GPU.
+
+```bash
+# 1. infrastructure only: Postgres, RustFS (S3), Temporal, Temporal UI
 cd infrastructure && docker compose up -d --wait
 
 # 2. backend: schema, then API + worker in two shells
@@ -304,12 +340,12 @@ routing eligible tenants to a managed provider.
 
 ```bash
 cd backend
-uv run pytest -q                     # 420 passed, 7 deselected (live-provider tests)
+uv run pytest -q                     # 469 passed, 3 skipped, 7 deselected (live-provider)
 uv run pytest -m gpu -q              # 3 passed — real GPU evaluation
-uv run ruff check src tests
+uv run ruff check src tests ../scripts
 
 cd ../frontend
-npm test                             # 48 passed
+npm test                             # 156 passed
 npm run build
 ```
 
@@ -356,6 +392,7 @@ time, and the evaluation corpus is regenerated with
 | `docs/observability.md` | traces, logs, metric catalog, dashboard, alerts |
 | `docs/evaluation.md` | datasets, metrics, normalization, MLflow, limits |
 | `docs/ui.md` | frontend: pages, the browser recorder, streaming-WebM duration, design rules |
+| `docs/deployment.md` | the one-command Docker stack: ports, env vars, GPU, backup, troubleshooting |
 | `docs/operations.md` | running it: config, routine tasks, backups, capacity |
 | `docs/incident-recovery.md` | what breaks, what the platform does, what you do |
 | `docs/phase-{0..7}-report.md` | per-phase evidence and limitations |

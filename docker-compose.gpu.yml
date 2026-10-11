@@ -1,0 +1,40 @@
+# GPU passthrough for the local model — the same stack, CUDA instead of CPU.
+#
+#   ./launch.sh gpu        (or: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d)
+#
+# Requires the NVIDIA container runtime. Check it with:
+#   docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+#
+# float16 is the right compute type for a Turing-or-newer card; on an older
+# card use int8_float16 (set STT_COMPUTE_TYPE in .env).
+
+services:
+  api:
+    environment:
+      STT_DEVICE: cuda
+      STT_COMPUTE_TYPE: ${STT_COMPUTE_TYPE_GPU:-float16}
+      # Its own variable on purpose: .env carries the CPU default (small),
+      # and a GPU run must not inherit that just because it is set.
+      STT_WHISPER_MODEL: ${STT_WHISPER_MODEL_GPU:-large-v3-turbo}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${STT_GPU_COUNT:-1}
+              capabilities: [gpu]
+
+  worker:
+    environment:
+      STT_DEVICE: cuda
+      STT_COMPUTE_TYPE: ${STT_COMPUTE_TYPE_GPU:-float16}
+      # Its own variable on purpose: .env carries the CPU default (small),
+      # and a GPU run must not inherit that just because it is set.
+      STT_WHISPER_MODEL: ${STT_WHISPER_MODEL_GPU:-large-v3-turbo}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${STT_GPU_COUNT:-1}
+              capabilities: [gpu]

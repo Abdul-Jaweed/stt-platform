@@ -1,0 +1,264 @@
+# The whole platform: database, object storage, Temporal, API, worker, console.
+#
+#   ./launch.sh            start it (generates .env on first run)
+#   ./launch.sh gpu        same, with the GPU override for the local model
+#   ./launch.sh mlflow     add the tracking server (evaluations log there)
+#
+# This stack owns the same host ports as infrastructure/docker-compose.yml,
+# which is the dev-only subset (database + storage + Temporal). Run one or the
+# other, not both.
+#
+# CPU by default so a fresh checkout works anywhere; docker-compose.gpu.yml
+# switches the local model to CUDA. Everything else is identical either way.
+
+name: stt-platform
+
+x-backend-build: &backend-build
+  context: ./backend
+
+x-backend-env: &backend-env
+  STT_DATABASE_URL: postgresql+psycopg://stt:stt@postgres:5432/stt
+  STT_S3_ENDPOINT: http://rustfs:9000
+  STT_S3_ACCESS_KEY: ${STT_S3_ACCESS_KEY:-stt}
+  STT_S3_SECRET_KEY: ${STT_S3_SECRET_KEY:-stt123456}
+  STT_TEMPORAL_HOST: temporal:7233
+  STT_TEMPORAL_TASK_QUEUE: stt-transcription
+  # "production" turns on the fail-closed guard: it refuses to start on the
+  # development credentials, so the launcher generates a password and a
+  # session secret into .env instead of shipping defaults.
+  STT_ENVIRONMENT: ${STT_ENVIRONMENT:-production}
+  STT_UI_USERNAME: ${STT_UI_USERNAME:-stt}
+  STT_UI_PASSWORD: ${STT_UI_PASSWORD:?STT_UI_PASSWORD missing — run ./launch.sh, or copy .env.example to .env}
+  STT_SESSION_SECRET: ${STT_SESSION_SECRET:?STT_SESSION_SECRET missing — run ./launch.sh, or copy .env.example to .env}
+  # The local demo is plain HTTP; a TLS-terminating deployment must set this
+  # to true (which production does automatically when left unset).
+  STT_SESSION_COOKIE_SECURE: ${STT_SESSION_COOKIE_SECURE:-false}
+  # 0 forces the durable async path for every upload (useful to exercise the
+  # worker, and to keep a slow model off the request thread).
+  STT_MAX_SYNC_DURATION_S: ${STT_MAX_SYNC_DURATION_S:-180}
+  STT_GPU_CONCURRENCY: ${STT_GPU_CONCURRENCY:-1}
+  STT_MANAGED_CONCURRENCY: ${STT_MANAGED_CONCURRENCY:-4}
+  STT_WHISPER_MODEL: ${STT_WHISPER_MODEL:-small}
+  STT_DEVICE: ${STT_DEVICE:-cpu}
+  STT_COMPUTE_TYPE: ${STT_COMPUTE_TYPE:-int8}
+  STT_LOG_LEVEL: ${STT_LOG_LEVEL:-INFO}
+  STT_MLFLOW_ENABLED: ${STT_MLFLOW_ENABLED:-false}
+  STT_MLFLOW_TRACKING_URI: ${STT_MLFLOW_TRACKING_URI:-http://mlflow:5000}
+  HF_HOME: /app/models/huggingface
+  HF_HUB_CACHE: /app/models/huggingface/hub
+  HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: stt-postgres
+    environment:
+      POSTGRES_DB: stt
+      POSTGRES_USER: stt
+      POSTGRES_PASSWORD: stt
+    ports: ["25432:5432"]
+    volumes: ["./.data/postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stt -d stt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # S3-compatible object storage, digest-pinned (same version mlfast runs;
+  # console on :29001). Secret must be >= 8 chars (mc client rule).
+  rustfs:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    container_name: stt-rustfs
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${STT_S3_ACCESS_KEY:-stt}
+      RUSTFS_SECRET_KEY: ${STT_S3_SECRET_KEY:-stt123456}
+    ports: ["29000:9000", "29001:9001"]
+    volumes: ["./.data/rustfs:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  # One-shot: create the buckets the backend expects, then exit.
+  storage-init:
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
+    container_name: stt-storage-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://rustfs:9000 ${STT_S3_ACCESS_KEY:-stt} ${STT_S3_SECRET_KEY:-stt123456}
+        mc mb --ignore-existing local/stt-audio
+        mc mb --ignore-existing local/stt-artifacts
+        echo "buckets ready"
+    restart: "no"
+
+  # Temporal's own database, separate from the application's.
+  temporal-postgres:
+    image: postgres:16
+    container_name: stt-temporal-postgres
+    environment:
+      POSTGRES_DB: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes: ["./.data/temporal-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Temporal server 1.29.1, digest-pinned. The server binds the container IP
+  # (not loopback), so the healthcheck must use the container name.
+  temporal:
+    image: temporalio/auto-setup@sha256:9be7b8d98f60d00f4f2ff74731c071a17848d8182bbc8429e314a24c94ea105b
+    container_name: stt-temporal
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: temporal-postgres
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+    ports: ["7233:7233"]
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "stt-temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui@sha256:3899d5cf749b5555c9f798d46f2423b1d6190ea391ca713db5d1bba961759e58
+    container_name: stt-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://127.0.0.1:28080
+    ports: ["28080:8080"]
+    restart: unless-stopped
+
+  # Schema first, once, before anything serves traffic.
+  migrate:
+    build: *backend-build
+    image: stt-platform-backend:latest
+    container_name: stt-migrate
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: *backend-build
+    image: stt-platform-backend:latest
+    container_name: stt-api
+    environment: *backend-env
+    ports: ["8200:8200"]
+    volumes:
+      # The model cache and the evaluation corpus live here: one mount, and a
+      # warm host cache is reused instead of re-downloaded.
+      - ./models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build: *backend-build
+    image: stt-platform-backend:latest
+    container_name: stt-worker
+    command: ["python", "-m", "stt_platform.workers.transcription_worker"]
+    environment: *backend-env
+    volumes:
+      - ./models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # No HTTP port to poll: the worker is useful exactly when Temporal is
+    # reachable, so that is what the check asks.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import socket; socket.create_connection(("temporal", 7233), 3).close()
+      interval: 20s
+      timeout: 6s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # The console, same-origin with the API through its own proxy.
+  frontend:
+    build:
+      context: ./frontend
+    image: stt-platform-frontend:latest
+    container_name: stt-frontend
+    ports: ["8080:80"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional tracking server for evaluations: ./launch.sh mlflow
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.16.1
+    container_name: stt-mlflow
+    profiles: ["mlflow"]
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --default-artifact-root
+      - /mlflow/artifacts
+    ports: ["5000:5000"]
+    volumes: ["./.data/mlflow:/mlflow"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:5000/health")
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped

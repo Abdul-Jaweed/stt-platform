@@ -23,13 +23,19 @@ backend:
 
 | File | Shows |
 |---|---|
+| `ui-landing-dark.png`, `ui-landing-light.png` | the public marketing page (dark / light) |
+| `ui-landing-mobile.png` | the same page at 390 px |
+| `ui-login-dark.png` | sign-in form |
 | `ui-upload.png` | upload tab, dark |
 | `ui-recorder.png`, `ui-recorder-preview.png` | recording, and a finished take before it is submitted |
 | `ui-live.png`, `ui-live-light.png` | live transcription while recording (dark / light) |
 | `ui-transcript.png`, `ui-transcript-light.png` | the transcript page (dark / light) |
 | `ui-job.png`, `ui-job-light.png` | lifecycle tracker and job metadata |
-| `ui-providers.png`, `ui-evaluations.png` | capability matrix, evaluation comparison |
+| `ui-providers.png`, `ui-evaluations.png` | capability matrix, evaluation comparison (summary cards, search, sortable columns, detail card) |
 | `ui-mobile.png` | 390 px viewport, light theme |
+
+All of the above were captured against the **Docker stack** (`./launch.sh`),
+served by nginx on `:8080` — the same bundle a deployment ships.
 
 ## Theme
 
@@ -58,6 +64,31 @@ square); `favicon-32.png` and `apple-touch-icon.png` are generated from the
 same geometry, and `manifest.webmanifest` lists all three. The header renders
 the identical SVG (`components/BrandMark.tsx`), so the tab and the app cannot
 drift apart.
+
+Every icon in the interface is a [Phosphor](https://phosphoricons.com) icon
+(`@phosphor-icons/react`), imported per icon so the bundle only carries what it
+uses. `src/icons.test.ts` enforces the rule across the source tree: no emoji
+and no stray Unicode glyphs standing in for icons — a character that renders
+differently on every platform is not an icon. It also asserts that icons used
+as decoration are `aria-hidden`, and that interactive controls keep an
+accessible name.
+
+## Signing in
+
+`/` and `/login` are public; every console route sits behind `RequireAuth`,
+which asks the API once (`GET /v1/auth/me`) and renders nothing until it knows
+the answer — a guarded page never flashes content it may not be allowed to
+show.
+
+- The browser holds **no secret**: `POST /v1/auth/login` sets an `HttpOnly`,
+  `SameSite=Lax` session cookie, so no token is readable from JavaScript and
+  nothing is kept in `localStorage`.
+- The **server** decides which tenant the session acts as. Nothing the client
+  sends can change the scope, exactly as with an API key.
+- Sign-out navigates away from the guarded route *before* dropping the
+  session, so the guard cannot race the redirect.
+- API keys keep working alongside cookies: the console is one client among
+  others.
 
 ## Live transcription
 
@@ -90,11 +121,18 @@ present.
 
 | Route | What it does |
 |---|---|
-| `/` | Upload a file **or record from the microphone**, pick provider/language, submit |
+| `/` | The marketing page (public): what the platform does, how a job runs, the providers, and how to run the whole thing yourself |
+| `/login` | Sign in; sets the session cookie |
+| `/upload` | Upload a file **or record from the microphone**, pick provider/language, submit |
 | `/jobs/:id` | Lifecycle tracker, status, provider, model, attempts, timings; retry/cancel |
 | `/jobs/:id/transcript` | Segments and words with playback sync, copy, TXT/SRT/VTT export |
 | `/providers` | Capability matrix reported by the API (never hard-coded) |
-| `/evaluations` | Run an evaluation, compare runs (WER/CER/RTF as numbers *and* meters) |
+| `/evaluations` | Run an evaluation; summary cards, a searchable/sortable comparison table with filters and paging, and a detail card per run (by-group and per-clip tables) |
+
+The evaluations page states what it measured and what it could not: a run whose
+WER is unavailable shows `not reported` and is never counted as a best, the
+summary's numbers are derived from the runs themselves, and a failed list load
+reports itself with a Retry instead of rendering an empty history.
 
 ## Recording in the browser
 

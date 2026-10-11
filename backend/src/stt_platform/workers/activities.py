@@ -27,7 +27,7 @@ from temporalio import activity
 
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
-from stt_platform.domain.errors import DomainError, ProviderError
+from stt_platform.domain.errors import DomainError, InvalidTransition, ProviderError
 from stt_platform.domain.status import JobStatus
 from stt_platform.observability import context as obs_context
 from stt_platform.observability import metrics
@@ -119,14 +119,22 @@ class TranscriptionActivities:
             record = repo.get(job_id, scope)
             if record.status is target:
                 return False
-            repo.append_transition(
-                job_id,
-                target,
-                scope=scope,
-                detail=detail,
-                failure=failure,
-                **(fields or {}),
-            )
+            try:
+                repo.append_transition(
+                    job_id,
+                    target,
+                    scope=scope,
+                    detail=detail,
+                    failure=failure,
+                    **(fields or {}),
+                )
+            except InvalidTransition as exc:
+                # The job already moved on (usually cancelled) while this
+                # workflow was in flight. The stored state wins: raising
+                # would make Temporal retry a transition that can never
+                # succeed, and overwriting it would rewrite history.
+                log.warning("ignoring illegal transition for job %s: %s", job_id, exc)
+                return False
             return True
 
     def _record_lifecycle_metrics(

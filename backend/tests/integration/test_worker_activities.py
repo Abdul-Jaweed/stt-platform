@@ -147,3 +147,23 @@ def test_execute_attempt_storage_outage_is_transient(session_factory, store, set
 
     # An unreachable object store must never wedge the job: retryable.
     assert outcome["outcome"] == "transient"
+
+
+def test_transition_from_a_terminal_state_is_a_noop(
+    session_factory, store, settings
+):
+    """A stale workflow must not spin on an illegal transition.
+
+    A job cancelled while its workflow was in flight leaves that workflow
+    trying to record FAILED afterwards; the database state is authoritative,
+    so the activity reports "not written" instead of raising (which Temporal
+    would retry) or overwriting a terminal status.
+    """
+    deps = build_deps(session_factory, FakeProvider(), store, settings)
+    job_id = seed_job(session_factory, store, status=JobStatus.CANCELLED)
+    acts = TranscriptionActivities(deps)
+
+    acts.transition(job_id, "local", "FAILED", detail={"code": "STALE"})
+
+    with session_factory() as session:
+        assert JobRepository(session).get(job_id, "local").status is JobStatus.CANCELLED

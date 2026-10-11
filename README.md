@@ -173,6 +173,58 @@ session is an `HttpOnly`, `SameSite=Lax` cookie and the **server** assigns the
 tenant — nothing the browser sends can change the scope, and no token is ever
 written to `localStorage`. API keys keep working alongside cookies.
 
+### Signing in
+
+| Where | Username | Password |
+|---|---|---|
+| Development (`uv run`, source checkout) | `stt` | `stt` |
+| Docker (`./launch.sh`) | `stt` | generated into `.env` on first run and printed once |
+
+The development default is a **server-side** default (`STT_UI_USERNAME` /
+`STT_UI_PASSWORD` in `backend/src/stt_platform/core/config.py`) — the frontend
+bundle contains no credentials, and the login page only shows the `stt` / `stt`
+hint when the server reports that development defaults are actually in use
+(`GET /v1/auth/config` → `dev_credentials`). Point `./launch.sh` at a real
+deployment and that hint disappears on its own.
+
+**Changing the credentials.**
+
+```bash
+# Docker: edit the generated .env, then recreate the API and the worker
+STT_UI_USERNAME=stt
+STT_UI_PASSWORD=choose-something-long        # or, better, a hash:
+STT_UI_PASSWORD_HASH=$2b$12$...              # see below
+STT_SESSION_SECRET=<64 hex chars>            # rotating it invalidates sessions
+./launch.sh restart
+
+# Local development: same variables, exported or in backend/.env
+export STT_UI_PASSWORD='...'
+```
+
+Prefer a hash: `STT_UI_PASSWORD_HASH` takes the platform's own self-describing
+scrypt hash (`scrypt$n$r$p$salt$hash`), so the plaintext never sits in the
+environment or in `docker inspect` output. Generate one with
+
+```bash
+cd backend && uv run python -c "from stt_platform.services.auth import hash_password; print(hash_password('your-password'))"
+```
+
+and remove `STT_UI_PASSWORD` when you set it (a hash wins over the plaintext
+field).
+
+**Production refuses weak credentials.** With `STT_ENVIRONMENT=production` the
+app will not start when UI auth is on and:
+
+- neither `STT_UI_PASSWORD_HASH` nor `STT_UI_PASSWORD` is set,
+- the password is shorter than 12 characters and no hash is given, or
+- `STT_SESSION_SECRET` is missing — without it every restart invalidates every
+  session and a multi-replica deployment cannot verify its own tokens.
+
+It also forces `Secure` session cookies unless `session_cookie_secure` is
+explicitly set to false (a TLS-terminating proxy may need that opt-out). Every
+one of these is a startup failure with a message naming the variable, not a
+warning in a log.
+
 Every icon is a Phosphor icon; a test enforces it (no emoji standing in for an
 icon), and another enforces that no stylesheet token references itself.
 

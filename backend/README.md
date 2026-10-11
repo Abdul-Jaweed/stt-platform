@@ -69,4 +69,12 @@ no CUDA device or sample is present.
 # with the compose stack up:
 uv run python ../scripts/e2e_phase2.py   # 202 → worker → SUCCEEDED, presign,
                                          # cancel, worker-restart recovery
+uv run python ../scripts/e2e_phase5.py   # observability on: spans, JSON logs,
+                                         # /metrics in API *and* worker
 ```
+
+The Phase-5 driver starts both processes with `STT_OTEL_ENABLED=true`,
+`STT_LOG_JSON=true` and Prometheus enabled, forces the queued path
+(`STT_MAX_SYNC_DURATION_S=0`), runs one real job on the 10 s sample, and
+asserts the metrics, the correlation/trace ids and the redaction result. It
+refuses to start if a stale process still holds its ports.

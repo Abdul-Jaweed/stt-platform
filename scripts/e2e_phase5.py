@@ -4,7 +4,9 @@ Proves the phase's claims with real processes rather than configuration:
 
 1. API and worker run with ``STT_OTEL_ENABLED=true`` (console exporter),
    ``STT_LOG_JSON=true`` and the Prometheus reader enabled;
-2. one real job (10 s sample, local GPU provider) goes 202 -> SUCCEEDED;
+2. one real job (10 s sample, local GPU provider) goes 202 -> SUCCEEDED
+   through the queued path (``STT_MAX_SYNC_DURATION_S=0``), so the
+   workflow and worker really take part;
 3. ``/metrics`` serves the recorded counters/histograms/gauges;
 4. the API's JSON access log carries the correlation id and the span
    exporter printed a server span for the request;
@@ -18,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -32,6 +35,9 @@ SAMPLE = REPO / "audio" / "sample.wav"
 RESULTS = REPO / "results" / "phase5_e2e"
 API = "http://127.0.0.1:8078"
 PROM_PORT = 9466
+# Each process serves its own exposition; on one host they need distinct
+# ports (Windows happily lets two sockets share one, so a clash is silent).
+WORKER_PROM_PORT = 9467
 
 SPAN_NAME_RE = re.compile(r'"name":\s*"([^"]+)"')
 TRACE_ID_RE = re.compile(r'"trace_id":\s*"([0-9a-f]{32})"')
@@ -46,7 +52,7 @@ def wait_http(url: str, timeout_s: float) -> None:
             response = httpx.get(url, timeout=2.0)
             if response.status_code < 500:
                 return
-        except Exception as exc:  # noqa: BLE001 - retry until the deadline
+        except Exception as exc:  # retry until the deadline
             last = exc
         time.sleep(0.5)
     raise RuntimeError(f"{url} never became ready: {last!r}")
@@ -67,7 +73,7 @@ def poll_job(client: httpx.Client, job_id: str, timeout_s: float) -> dict:
     raise TimeoutError(f"job {job_id} stuck at {seen[-1] if seen else '?'}")
 
 
-def observability_env() -> dict[str, str]:
+def observability_env(*, prometheus_port: int = PROM_PORT) -> dict[str, str]:
     env = dict(os.environ)
     env.update(
         {
@@ -77,8 +83,12 @@ def observability_env() -> dict[str, str]:
             "STT_LOG_JSON": "true",
             "STT_LOG_LEVEL": "INFO",
             "STT_PROMETHEUS_ENABLED": "true",
-            "STT_PROMETHEUS_PORT": str(PROM_PORT),
+            "STT_PROMETHEUS_PORT": str(prometheus_port),
             "STT_RUNTIME_SAMPLE_INTERVAL_S": "2",
+            # Force the queued path: a 10 s file is otherwise transcribed
+            # inline in the API request (max_sync_duration_s), and the
+            # workflow/worker spans and job metrics would never exist.
+            "STT_MAX_SYNC_DURATION_S": "0",
             # Own queue: the shared one carries workflows from earlier runs
             # whose jobs are already terminal, which only adds noise here.
             "STT_TEMPORAL_TASK_QUEUE": "stt-e2e-phase5",
@@ -116,32 +126,92 @@ def start_worker(tmp: Path) -> subprocess.Popen:
         cwd=BACKEND,
         stdout=log,
         stderr=subprocess.STDOUT,
-        env=observability_env(),
+        env=observability_env(prometheus_port=WORKER_PROM_PORT),
     )
 
 
 def kill_tree(proc: subprocess.Popen | None) -> None:
-    if proc is None or proc.poll() is not None:
+    """Kill the process *and its children*.
+
+    ``uv run`` spawns python as a child: terminating the wrapper alone
+    leaves the real server listening, and the next run then talks to a
+    stale process (Windows even lets two sockets share a port, silently).
+    """
+    if proc is None:
         return
-    proc.terminate()
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+            check=False,
+        )
+    elif proc.poll() is None:
+        proc.terminate()
     try:
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
         proc.kill()
 
 
+def _port_free(port: int) -> bool:
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def assert_ports_free() -> None:
+    """Fail fast rather than measure a leftover process from an earlier run."""
+    busy = [
+        port
+        for port in (8078, PROM_PORT, WORKER_PROM_PORT)
+        if not _port_free(port)
+    ]
+    if busy:
+        raise SystemExit(
+            f"ports {busy} are already in use — a stale process is running; "
+            "kill it before trusting any result"
+        )
+
+
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _metric_value(text: str, metric: str, labels: str = "") -> float | None:
-    """Value of ``metric{labels}`` in the Prometheus text exposition."""
-    pattern = re.compile(
-        rf"^{re.escape(metric)}\{{{re.escape(labels)}\}}\s+([0-9.eE+]+)$",
-        re.MULTILINE,
-    )
-    match = pattern.search(text)
-    return float(match.group(1)) if match else None
+def _parse_prometheus(text: str) -> list[tuple[str, dict[str, str], float]]:
+    """Samples as ``(name, labels, value)`` — label order never matters."""
+    samples: list[tuple[str, dict[str, str], float]] = []
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name_part, _, value_text = line.rpartition(" ")
+        try:
+            value = float(value_text)
+        except ValueError:
+            continue
+        if "{" in name_part:
+            name, _, labels_text = name_part.partition("{")
+            labels = dict(
+                re.findall(r'(\w+)="([^"]*)"', labels_text.rstrip("}"))
+            )
+        else:
+            name, labels = name_part, {}
+        samples.append((name, labels, value))
+    return samples
+
+
+def _sample(
+    samples: list[tuple[str, dict[str, str], float]], name: str, **labels: str
+) -> float | None:
+    for sample_name, sample_labels, value in samples:
+        if sample_name != name:
+            continue
+        if all(sample_labels.get(key) == want for key, want in labels.items()):
+            return value
+    return None
 
 
 def _metric_present(text: str, metric: str) -> bool:
@@ -157,6 +227,7 @@ def main() -> int:
     }
     api_proc = worker_proc = None
     try:
+        assert_ports_free()
         assert SAMPLE.is_file(), f"missing sample audio: {SAMPLE}"
         results["audio"] = {
             "path": str(SAMPLE.relative_to(REPO)),
@@ -179,7 +250,8 @@ def main() -> int:
                 files={"file": (SAMPLE.name, fh, "audio/wav")},
                 headers={"X-Request-ID": "e2e-phase5"},
             )
-        assert response.status_code in (200, 201, 202), response.text
+        assert response.status_code == 202, response.text
+        results["accepted_status"] = response.status_code
         job_id = response.json()["id"]
         print(f"[e2e] job {job_id} accepted ({response.status_code})")
         results["job_id"] = job_id
@@ -205,52 +277,90 @@ def main() -> int:
         time.sleep(8)
 
         # ------------------------------------------------------ metrics --
-        metrics_text = client.get("/metrics").text
-        (RESULTS).mkdir(parents=True, exist_ok=True)
-        (RESULTS / "metrics.txt").write_text(metrics_text, encoding="utf-8")
+        # Metrics are per process: the API serves its own /metrics, the
+        # worker serves its own on prometheus_port. Both must be scraped.
+        api_text = client.get("/metrics").text
+        worker_text = httpx.get(
+            f"http://127.0.0.1:{WORKER_PROM_PORT}/metrics", timeout=10
+        ).text
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        (RESULTS / "metrics_api.txt").write_text(api_text, encoding="utf-8")
+        (RESULTS / "metrics_worker.txt").write_text(worker_text, encoding="utf-8")
+        api_samples = _parse_prometheus(api_text)
+        worker_samples = _parse_prometheus(worker_text)
+
         checks = {
-            "stt_api_requests_total": _metric_value(
-                metrics_text, "stt_api_requests_total", 'http_route="/v1/transcriptions",http_request_method="POST",http_response_status_code="202"'
+            "api_requests_total": _sample(
+                api_samples,
+                "stt_api_requests_total",
+                http_route="/v1/transcriptions",
+                http_request_method="POST",
             ),
-            "stt_api_errors_total_present": _metric_present(
-                metrics_text, "stt_api_errors_total"
+            "api_request_duration_count": _sample(
+                api_samples,
+                "stt_api_request_duration_seconds_count",
+                http_route="/v1/transcriptions",
             ),
-            "stt_upload_bytes_count": _metric_value(
-                metrics_text, "stt_upload_bytes_count"
+            "api_upload_bytes_count": _sample(
+                api_samples, "stt_upload_bytes_count"
             ),
-            "stt_job_end_to_end_succeeded": _metric_value(
-                metrics_text,
+            "api_process_cpu_percent": _sample(
+                api_samples, "stt_process_cpu_percent"
+            ),
+            "api_process_memory_bytes": _sample(
+                api_samples, "stt_process_memory_bytes"
+            ),
+            "api_queue_depth": _sample(api_samples, "stt_queue_depth"),
+            "worker_job_end_to_end_succeeded": _sample(
+                worker_samples,
                 "stt_job_end_to_end_seconds_count",
-                'provider="faster_whisper",status="SUCCEEDED"',
+                status="SUCCEEDED",
             ),
-            "stt_job_processing_count": _metric_value(
-                metrics_text, "stt_job_processing_seconds_count"
+            "worker_job_queue_wait_count": _sample(
+                worker_samples, "stt_job_queue_wait_seconds_count"
             ),
-            "stt_job_real_time_factor_count": _metric_value(
-                metrics_text, "stt_job_real_time_factor_count"
+            "worker_job_processing_count": _sample(
+                worker_samples, "stt_job_processing_seconds_count"
             ),
-            "stt_provider_calls_ok": _metric_value(
-                metrics_text,
+            "worker_job_real_time_factor_count": _sample(
+                worker_samples, "stt_job_real_time_factor_count"
+            ),
+            "worker_job_real_time_factor_sum": _sample(
+                worker_samples, "stt_job_real_time_factor_sum"
+            ),
+            "worker_provider_calls_ok": _sample(
+                worker_samples,
                 "stt_provider_calls_total",
-                'operation="transcribe",outcome="ok",provider="faster_whisper"',
+                operation="transcribe",
+                outcome="ok",
             ),
-            "stt_queue_depth": _metric_value(metrics_text, "stt_queue_depth"),
-            "stt_process_cpu_percent": _metric_value(
-                metrics_text, "stt_process_cpu_percent"
+            "worker_provider_duration_count": _sample(
+                worker_samples,
+                "stt_provider_duration_seconds_count",
+                operation="transcribe",
             ),
-            "stt_process_memory_bytes": _metric_value(
-                metrics_text, "stt_process_memory_bytes"
+            "worker_process_cpu_percent": _sample(
+                worker_samples, "stt_process_cpu_percent"
+            ),
+            "worker_gpu_utilization_percent": _sample(
+                worker_samples, "stt_gpu_utilization_percent"
             ),
         }
         results["metrics"] = checks
         for name, value in checks.items():
             print(f"[e2e] metric {name} = {value!r}")
         missing = [name for name, value in checks.items() if value is None]
-        assert not missing, f"metrics missing from /metrics: {missing}"
-        assert checks["stt_job_end_to_end_succeeded"] >= 1
-        assert checks["stt_job_real_time_factor_count"] >= 1
-        assert checks["stt_queue_depth"] >= 0
-        assert checks["stt_process_memory_bytes"] > 0
+        assert not missing, f"metrics missing: {missing}"
+        assert checks["worker_job_end_to_end_succeeded"] >= 1
+        assert checks["worker_job_real_time_factor_count"] >= 1
+        assert checks["worker_provider_calls_ok"] >= 1
+        assert checks["api_upload_bytes_count"] >= 1
+        assert checks["api_process_memory_bytes"] > 0
+        results["rtf"] = (
+            checks["worker_job_real_time_factor_sum"]
+            / checks["worker_job_real_time_factor_count"]
+        )
+        print(f"[e2e] mean real-time factor = {results['rtf']:.3f}")
 
         # --------------------------------------------------------- logs ----
         api_log = _read(tmp / "api.log")
@@ -335,9 +445,12 @@ def main() -> int:
                     continue
                 name, _, value = stripped.partition("=")
                 value = value.strip().strip('"').strip("'")
-                if "KEY" in name.upper() and len(value) >= 8:
-                    if value in api_log or value in worker_log:
-                        leaks.append(name)
+                if (
+                    "KEY" in name.upper()
+                    and len(value) >= 8
+                    and (value in api_log or value in worker_log)
+                ):
+                    leaks.append(name)
         assert not leaks, f"credentials leaked into logs: {leaks}"
         results["redaction"] = {
             "checked": "API keys from backend/.env",
@@ -347,7 +460,7 @@ def main() -> int:
 
         results["passed"] = True
         return 0
-    except Exception as exc:  # noqa: BLE001 - recorded, then reported
+    except Exception as exc:  # recorded, then reported
         results["passed"] = False
         results["error"] = f"{type(exc).__name__}: {exc}"
         print(f"[e2e] FAILED: {results['error']}")

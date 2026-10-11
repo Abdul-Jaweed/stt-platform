@@ -42,6 +42,17 @@ behind the same contract), plus a separate React + TypeScript frontend.
   214 backend tests + 2 GPU + fake-server e2e
   (`results/phase4_e2e/result.json`). See `docs/phase-4-report.md`,
   `docs/providers.md`.
+- **Phase 5 complete** — observability across API, workflow, worker and
+  providers: OpenTelemetry traces (API → workflow → activity, one trace
+  id across processes), 21 named metrics (API latency/errors, upload
+  size, queue wait, end-to-end, processing, real-time factor, retries,
+  fallbacks, provider latency/errors/throttling, storage errors, queue
+  depth, CPU/RSS/GPU), structured JSON logs with correlation + job ids
+  and redaction, a Prometheus endpoint in both processes, plus a Grafana
+  dashboard (20 panels) and 18 alert rules validated against the metric
+  registry. **Off by default and never fatal.** Verified: real-stack e2e
+  with two processes, one job, RTF 0.094 (`results/phase5_e2e/`). See
+  `docs/phase-5-report.md`, `docs/observability.md`.
 
 ## Repository layout
 
@@ -111,4 +122,6 @@ npm run dev            # http://localhost:5173 (API base: VITE_API_BASE_URL)
 - `docs/providers.md` — provider capability matrix, config, fidelity rules
 - `docs/live-provider-verification.md` — 2026-10-11 live runs: numbers, defects, evidence
 - `docs/phase-4-report.md` — managed providers: evidence, limitations
+- `docs/observability.md` — traces, logs, metric catalog, dashboard, alerts
+- `docs/phase-5-report.md` — observability: evidence, limitations
 - `docs/superpowers/plans/` — per-phase implementation plans

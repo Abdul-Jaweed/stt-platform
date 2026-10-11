@@ -93,6 +93,48 @@ def test_sync_upload_stores_original_and_artifact(
         session.close()
 
 
+def test_upload_size_is_recorded_as_a_metric(
+    session_factory, settings, store, tmp_path
+):
+    """The spec asks for upload size; it is measured where the bytes are known."""
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from stt_platform.core.config import Settings
+    from stt_platform.observability import metrics
+
+    reader = InMemoryMetricReader()
+    metrics.shutdown_metrics()  # setup_metrics is idempotent per process
+    metrics.setup_metrics(
+        Settings(
+            otel_enabled=True,
+            otel_exporter="none",
+            database_url="postgresql+psycopg://stt:stt@127.0.0.1:25432/stt",
+        ),
+        reader=reader,
+    )
+    service, session = make_service(session_factory, settings, FakeProvider(), store)
+    try:
+        wav = make_wav(tmp_path / "sized.wav", seconds=1.0)
+        size = wav.stat().st_size
+        service.create_and_process(audio_path=wav)
+
+        data = reader.get_metrics_data()
+        points = [
+            point
+            for resource_metrics in data.resource_metrics
+            for scope_metrics in resource_metrics.scope_metrics
+            for metric in scope_metrics.metrics
+            if metric.name == "stt_upload_bytes"
+            for point in metric.data.data_points
+        ]
+        assert points, "no stt_upload_bytes datapoint"
+        assert sum(point.count for point in points) == 1
+        assert points[0].sum == float(size)
+    finally:
+        session.close()
+        metrics.shutdown_metrics()
+
+
 def test_retry_without_local_file_fetches_from_s3(
     session_factory, settings, store, tmp_path
 ):

@@ -1,5 +1,8 @@
 # Phase 5 — Observability (OpenTelemetry, metrics, logs, dashboards)
 
+Status: **complete** (T1–T8). Report: `docs/phase-5-report.md`. Operational
+detail: `docs/observability.md`.
+
 Spec: `IDEA.md` §"Observability" — "Use OpenTelemetry across API requests,
 workflows, workers, audio processing, provider calls, and persistence.
 Propagate trace context across asynchronous boundaries. Track API

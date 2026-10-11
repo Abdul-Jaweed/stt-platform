@@ -43,6 +43,7 @@ from stt_platform.domain.errors import (
     UploadTooLarge,
 )
 from stt_platform.domain.status import JobStatus
+from stt_platform.observability import metrics
 from stt_platform.persistence.outbox import OutboxRepository
 from stt_platform.persistence.repositories import JobRepository
 from stt_platform.providers.base import (
@@ -247,6 +248,7 @@ class JobService:
         except (AudioValidationError, UploadTooLarge, AudioTooLong) as exc:
             return self._fail(job_id, exc, retryable=False, scope=scope)
 
+        metrics.record_upload_bytes(info.size_bytes)
         self._repo.append_transition(
             job_id,
             JobStatus.STORED,
@@ -425,6 +427,7 @@ class JobService:
                 info = validate_upload(audio_path, self._settings)
             except (AudioValidationError, UploadTooLarge, AudioTooLong) as exc:
                 return self._fail(job_id, exc, retryable=False, scope=scope)
+            metrics.record_upload_bytes(info.size_bytes)
             self._repo.append_transition(
                 job_id,
                 JobStatus.STORED,

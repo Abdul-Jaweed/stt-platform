@@ -6,6 +6,11 @@ from pathlib import Path
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from stt_platform.services.auth import (
+    MIN_PRODUCTION_PASSWORD_LENGTH,
+    is_weak_password,
+)
+
 # backend/src/stt_platform/core/config.py -> repository root (local-stt/)
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -91,6 +96,30 @@ class Settings(BaseSettings):
     api_keys: str = ""
     max_requests_per_minute: int = 0
     retention_days: int = 0
+    #: Deployment profile. "production" refuses the development defaults
+    #: below instead of quietly shipping them.
+    environment: str = "local"
+    # UI login. The browser holds an HttpOnly session cookie, never a key or a
+    # password; the server decides which tenant that session acts as.
+    ui_auth_enabled: bool = True
+    ui_username: str = "stt"
+    #: Development default only — production must set a strong password or,
+    #: better, a hash (see ``ui_password_hash``).
+    ui_password: str | None = "stt"
+    ui_password_hash: str | None = None
+    #: The tenant a UI session acts as. Server-assigned: a session, like a
+    #: key, never lets the caller pick its own scope.
+    ui_tenant: str = "local"
+    #: Signs session tokens. Unset means "generate one per process": sessions
+    #: then do not survive a restart (fine locally, refused in production).
+    session_secret: str | None = None
+    session_ttl_s: int = 12 * 3600
+    session_cookie_name: str = "stt_session"
+    #: Secure cookies require HTTPS. Defaults to on in production; the local
+    #: dev flow is plain HTTP on 127.0.0.1, where a Secure cookie is never sent.
+    session_cookie_secure: bool = False
+    #: Failed logins per minute, per (address, account). 0 disables it.
+    login_max_attempts_per_minute: int = 10
     # Evaluation (Phase 6): where datasets and their audio live, how large a
     # run may be, and where MLflow keeps the record of it. MLflow logging is
     # best-effort and time-bounded: a dead tracking server downgrades the
@@ -120,6 +149,35 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:4173",
     ]
+
+    @model_validator(mode="after")
+    def _guard_production_credentials(self) -> "Settings":
+        """Fail closed: a production deployment may not run on the defaults."""
+        if self.environment != "production":
+            return self
+        # Secure cookies unless the deployment explicitly says otherwise
+        # (a TLS-terminating proxy can legitimately need the opt-out).
+        if "session_cookie_secure" not in self.model_fields_set:
+            self.session_cookie_secure = True
+        if self.ui_auth_enabled:
+            if not self.ui_password_hash and not self.ui_password:
+                raise ValueError(
+                    "production needs UI credentials: set STT_UI_PASSWORD_HASH "
+                    "(preferred) or STT_UI_PASSWORD"
+                )
+            if not self.ui_password_hash and is_weak_password(self.ui_password):
+                raise ValueError(
+                    "production requires a UI password of at least "
+                    f"{MIN_PRODUCTION_PASSWORD_LENGTH} characters, or a "
+                    "precomputed STT_UI_PASSWORD_HASH"
+                )
+            if not self.session_secret:
+                raise ValueError(
+                    "production needs STT_SESSION_SECRET: without it every "
+                    "restart invalidates every session and a multi-replica "
+                    "deployment cannot verify its own tokens"
+                )
+        return self
 
     @model_validator(mode="after")
     def _fill_path_defaults(self) -> "Settings":

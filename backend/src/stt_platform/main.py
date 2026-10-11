@@ -1,4 +1,5 @@
 """FastAPI application factory and ASGI entrypoint."""
+import secrets
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -8,6 +9,7 @@ from fastapi.responses import Response
 
 from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.ratelimit import SlidingWindowLimiter
+from stt_platform.api.v1 import auth as auth_routes
 from stt_platform.api.v1 import evaluations, health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.observability import metrics, runtime, tracing
@@ -22,6 +24,7 @@ from stt_platform.observability.temporal import temporal_interceptors
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
 from stt_platform.providers.registry import ProviderRegistry
+from stt_platform.services.auth import SessionTokens, hash_password
 from stt_platform.storage.s3 import S3ObjectStore
 
 
@@ -45,11 +48,26 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Idempotency-Key"],
-        allow_credentials=False,
+        allow_headers=["Content-Type", "Idempotency-Key", "Authorization"],
+        # The session cookie travels with the request. Safe because the
+        # allowed origins are an explicit list, never "*".
+        allow_credentials=True,
     )
     app.state.settings = settings
     app.state.rate_limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
+    app.state.login_limiter = SlidingWindowLimiter(
+        settings.login_max_attempts_per_minute
+    )
+    # Session signing: a configured secret keeps sessions across restarts
+    # and across replicas; without one a per-process secret is generated
+    # and every restart signs everyone out (refused outright in production).
+    secret = settings.session_secret or secrets.token_urlsafe(32)
+    app.state.sessions = SessionTokens(secret, ttl_s=settings.session_ttl_s)
+    # The stored credential: a precomputed hash when the deployment set one,
+    # otherwise a hash derived once from the configured password.
+    app.state.ui_password_hash = settings.ui_password_hash or (
+        hash_password(settings.ui_password) if settings.ui_password else None
+    )
     app.state.registry = registry
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
@@ -60,6 +78,7 @@ def create_app(
     app.state.starter = starter
 
     register_exception_handlers(app)
+    app.include_router(auth_routes.router, prefix="/v1")
     app.include_router(transcriptions.router, prefix="/v1")
     app.include_router(providers.router, prefix="/v1")
     app.include_router(evaluations.router, prefix="/v1")

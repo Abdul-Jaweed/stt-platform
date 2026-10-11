@@ -67,6 +67,21 @@ class Settings(BaseSettings):
     provider_connect_timeout_s: float = 10.0
     max_provider_response_bytes: int = 25_000_000
 
+    # Observability (Phase 5). Off by default: a no-op provider means zero
+    # overhead and no new failure mode. "otlp" posts to otel_endpoint
+    # (OTLP/HTTP); "console" prints spans; "none" records nothing.
+    otel_enabled: bool = False
+    otel_exporter: str = "otlp"
+    otel_endpoint: str = "http://127.0.0.1:4318"
+    otel_service_name: str = "stt-platform"
+    otel_environment: str = "local"
+    otel_sample_ratio: float = 1.0
+    # Prometheus scrape endpoint for the metric reader (T7).
+    prometheus_enabled: bool = False
+    prometheus_port: int = 9464
+    # Runtime sampler interval (CPU/RSS/GPU/queue depth).
+    runtime_sampler_interval_s: float = 15.0
+
     # Browser frontend origins (Vite dev server / preview server). Override
     # with a JSON array in STT_CORS_ORIGINS.
     cors_origins: list[str] = [

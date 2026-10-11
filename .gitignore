@@ -9,13 +9,15 @@ __pycache__/
 .ruff_cache/
 
 # --- I: drive assets: models, caches, generated data (never committed) ---
-models/
-.cache/
-.data/
-audio/
-output/
-results/
-recordings/
+# Anchored to the repository root so nested packages (e.g.
+# backend/src/stt_platform/audio) are never silently ignored.
+/models/
+/.cache/
+/.data/
+/audio/
+/output/
+/results/
+/recordings/
 
 # --- Frontend ---
 frontend/node_modules/

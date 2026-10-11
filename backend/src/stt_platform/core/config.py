@@ -53,6 +53,19 @@ class Settings(BaseSettings):
     retry_jitter_ratio: float = 0.25
     max_async_duration_s: float = 14400.0
 
+    # Managed providers. Keys are optional: a provider registers only when
+    # its key is set (STT_DEEPGRAM_API_KEY / STT_ELEVENLABS_API_KEY /
+    # STT_SARVAM_API_KEY). Base URLs are overridable for fake servers.
+    deepgram_api_key: str | None = None
+    deepgram_base_url: str = "https://api.deepgram.com"
+    elevenlabs_api_key: str | None = None
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    sarvam_api_key: str | None = None
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    provider_timeout_s: float = 300.0
+    provider_connect_timeout_s: float = 10.0
+    max_provider_response_bytes: int = 25_000_000
+
     # Browser frontend origins (Vite dev server / preview server). Override
     # with a JSON array in STT_CORS_ORIGINS.
     cors_origins: list[str] = [

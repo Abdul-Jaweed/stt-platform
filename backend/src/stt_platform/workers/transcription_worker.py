@@ -31,7 +31,6 @@ from temporalio.worker import Worker
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.persistence.outbox import OutboxRepository
-from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.services.dispatch import dispatch_pending
 from stt_platform.services.temporal_starter import (
     remote_config_from_settings,
@@ -48,12 +47,11 @@ log = logging.getLogger(__name__)
 
 
 def build_deps(settings: Settings) -> ActivityDeps:
-    from stt_platform.providers.faster_whisper import FasterWhisperProvider
+    from stt_platform.providers.defaults import build_default_registry
 
     settings.apply_runtime_env()
     engine = make_engine(settings.database_url)
-    registry = ProviderRegistry()
-    registry.register(FasterWhisperProvider(), default=True)
+    registry = build_default_registry(settings)
     store = S3ObjectStore.from_settings(settings)
     try:
         store.ensure_buckets()
@@ -119,10 +117,14 @@ async def main() -> None:
         future = asyncio.run_coroutine_threadsafe(start_workflow(payload), loop)
         future.result(timeout=30)
 
-    # Sync activities (ffmpeg, model inference, boto3) run in this pool;
-    # max_concurrent_activities is what gates real GPU concurrency.
+    # Sync activities (ffmpeg, model inference, boto3, provider HTTP) run in
+    # this pool. Activity slots cover GPU + managed + transition overhead;
+    # the GPU semaphore inside the whisper adapter and the managed semaphore
+    # inside the HTTP client do the real class-level gating, so a managed
+    # call can never starve the single GPU slot.
+    activity_slots = settings.gpu_concurrency + settings.managed_concurrency + 2
     executor = ThreadPoolExecutor(
-        max_workers=max(4, settings.gpu_concurrency),
+        max_workers=max(4, activity_slots),
         thread_name_prefix="stt-activity",
     )
     worker = Worker(
@@ -131,12 +133,14 @@ async def main() -> None:
         workflows=[TranscriptionWorkflow],
         activities=make_activities(deps),
         activity_executor=executor,
-        max_concurrent_activities=settings.gpu_concurrency,
+        max_concurrent_activities=activity_slots,
     )
     log.info(
-        "transcription worker up: queue=%s gpu_concurrency=%d temporal=%s",
+        "transcription worker up: queue=%s gpu_concurrency=%d "
+        "managed_concurrency=%d temporal=%s",
         settings.temporal_task_queue,
         settings.gpu_concurrency,
+        settings.managed_concurrency,
         settings.temporal_host,
     )
     threading.Thread(

@@ -9,16 +9,9 @@ from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.v1 import health, providers, transcriptions
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.persistence.db import make_engine, make_session_factory
+from stt_platform.providers.defaults import build_default_registry
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.storage.s3 import S3ObjectStore
-
-
-def build_default_registry() -> ProviderRegistry:
-    from stt_platform.providers.faster_whisper import FasterWhisperProvider
-
-    registry = ProviderRegistry()
-    registry.register(FasterWhisperProvider(), default=True)
-    return registry
 
 
 def create_app(
@@ -28,7 +21,7 @@ def create_app(
     starter: Any = None,
 ) -> FastAPI:
     settings = settings or get_settings()
-    registry = registry or build_default_registry()
+    registry = registry or build_default_registry(settings)
     engine = make_engine(settings.database_url)
 
     @asynccontextmanager

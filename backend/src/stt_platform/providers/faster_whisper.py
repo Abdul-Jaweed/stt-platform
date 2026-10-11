@@ -8,6 +8,7 @@ lifetime (one load per worker lifecycle, spec §9). The model cache is the
 canonical ``models/faster-whisper`` directory via explicit
 ``download_root`` — never the user-level HF cache (ADR-003).
 """
+import threading
 from typing import Callable
 
 import stt_platform.core.cuda  # noqa: F401  (Windows DLL registration side effect)
@@ -43,10 +44,16 @@ class FasterWhisperProvider:
         self,
         settings: Settings | None = None,
         engine_factory: Callable[..., object] | None = None,
+        semaphore: threading.BoundedSemaphore | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._engine_factory = engine_factory
         self._engine = None
+        # GPU work is serialized by this semaphore (worker activity slots
+        # cover GPU + managed + overhead; this is the real GPU gate).
+        self._semaphore = semaphore or threading.BoundedSemaphore(
+            max(1, self._settings.gpu_concurrency)
+        )
 
     # ------------------------------------------------------------------
     # contract
@@ -93,25 +100,26 @@ class FasterWhisperProvider:
         import time
 
         started = time.perf_counter()
-        try:
-            segments_iter, info = engine.transcribe(
-                str(request.audio_path),
-                language=request.language,
-                beam_size=5,
-                vad_filter=True,
-                word_timestamps=True,
-                condition_on_previous_text=False,
-            )
-            # Inference executes as the generator is consumed.
-            raw_segments = list(segments_iter)
-        except ValueError as exc:
-            raise ProviderError(
-                "DECODE_FAILED", f"could not decode audio: {exc}", retryable=False
-            ) from exc
-        except Exception as exc:
-            raise ProviderError(
-                "INFERENCE_FAILED", f"inference failed: {exc}", retryable=True
-            ) from exc
+        with self._semaphore:
+            try:
+                segments_iter, info = engine.transcribe(
+                    str(request.audio_path),
+                    language=request.language,
+                    beam_size=5,
+                    vad_filter=True,
+                    word_timestamps=True,
+                    condition_on_previous_text=False,
+                )
+                # Inference executes as the generator is consumed.
+                raw_segments = list(segments_iter)
+            except ValueError as exc:
+                raise ProviderError(
+                    "DECODE_FAILED", f"could not decode audio: {exc}", retryable=False
+                ) from exc
+            except Exception as exc:
+                raise ProviderError(
+                    "INFERENCE_FAILED", f"inference failed: {exc}", retryable=True
+                ) from exc
         processing_duration_s = time.perf_counter() - started
 
         return _to_provider_transcript(

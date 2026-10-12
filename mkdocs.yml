@@ -39,6 +39,7 @@ theme:
 nav:
   - Overview: index.md
   - Pipeline and reliability: pipeline-and-reliability.md
+  - Evidance revamp report: evidance-revamp-report.md
   - API: api.md
   - Deployment and configuration: deployment.md
   - Operations: operations.md

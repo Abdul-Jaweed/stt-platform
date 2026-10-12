@@ -38,6 +38,7 @@ theme:
 
 nav:
   - Overview: index.md
+  - Pipeline and reliability: pipeline-and-reliability.md
   - API: api.md
   - Deployment and configuration: deployment.md
   - Operations: operations.md

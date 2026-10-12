@@ -1,4 +1,4 @@
-# STT Platform
+# Evidance
 
 **A provider-neutral speech-to-text platform.** One headless `/v1` API turns
 audio into timestamped transcripts through swappable providers — a local
@@ -6,10 +6,17 @@ Faster-Whisper `large-v3-turbo` on CUDA, or a managed API — behind a single
 internal contract. A separate React + TypeScript app consumes only that API,
 so voice agents, scripts and the UI are all just clients.
 
-Built phase by phase under strict TDD: **8 phases (0–7), all complete.**
-Verified locally with **420 backend tests + 3 GPU tests + 48 frontend tests**,
-plus real-stack end-to-end drivers that use the actual GPU, the actual
-Temporal server and the actual object store.
+Built phase by phase under strict TDD: **8 phases (0–7), all complete**, plus
+the Evidance revamp slices (safety switches, live-stack evidence scripts, the
+OpenAPI contract, evaluation explainability, managed streaming behind a
+capability flag). Verified locally with **578 backend tests + 3 GPU tests +
+214 frontend tests**, plus real-stack end-to-end drivers that use the actual
+GPU, the actual Temporal server and the actual object store.
+
+**Docs**: the full documentation builds as a site —
+<https://abdul-jaweed.github.io/stt-platform/> — and the pipeline, failure
+behaviour and capacity story live in
+[docs/pipeline-and-reliability.md](docs/pipeline-and-reliability.md).
 
 ![Transcript page — segments with word-level timestamps](docs/images/ui-transcript.png)
 
@@ -45,7 +52,7 @@ graph TB
     subgraph apip["API process"]
         FAST["FastAPI · /v1"]
         AUTH["API-key auth<br/>tenant scope + quota"]
-        OBS["/metrics · OpenTelemetry<br/>off by default"]
+        OBS["/metrics · OpenTelemetry<br/>on by default (opt-out)"]
     end
 
     subgraph data[Data plane]

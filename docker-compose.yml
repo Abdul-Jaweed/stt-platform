@@ -38,6 +38,15 @@ x-backend-env: &backend-env
   STT_MAX_SYNC_DURATION_S: ${STT_MAX_SYNC_DURATION_S:-180}
   STT_GPU_CONCURRENCY: ${STT_GPU_CONCURRENCY:-1}
   STT_MANAGED_CONCURRENCY: ${STT_MANAGED_CONCURRENCY:-4}
+  # Managed providers (free tier). A provider registers only while its key is
+  # present, and nothing is sent to one unless a request explicitly selects it.
+  # Empty means "absent": the local model stays the default.
+  STT_DEEPGRAM_API_KEY: ${STT_DEEPGRAM_API_KEY:-}
+  STT_ELEVENLABS_API_KEY: ${STT_ELEVENLABS_API_KEY:-}
+  STT_SARVAM_API_KEY: ${STT_SARVAM_API_KEY:-}
+  # Optional API-key auth for programmatic clients (off unless turned on).
+  STT_AUTH_ENABLED: ${STT_AUTH_ENABLED:-false}
+  STT_API_KEYS: ${STT_API_KEYS:-}
   STT_WHISPER_MODEL: ${STT_WHISPER_MODEL:-small}
   STT_DEVICE: ${STT_DEVICE:-cpu}
   STT_COMPUTE_TYPE: ${STT_COMPUTE_TYPE:-int8}

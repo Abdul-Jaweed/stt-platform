@@ -126,6 +126,28 @@ has_gpu() {
   return 0
 }
 
+# Is the RUNNING stack on the GPU? `restart` and `rebuild` recreate api and
+# worker, and recreating them from the base file alone silently drops the GPU
+# override: the local model would come back on CPU with the CPU model. The
+# running worker answers this directly, which also covers stacks that were
+# started before any flag file would have existed.
+gpu_in_use() {
+  docker inspect -f '{{json .HostConfig.DeviceRequests}}' stt-worker 2>/dev/null \
+    | grep -q nvidia
+}
+
+# Append the GPU override whenever this invocation would otherwise shuffle a
+# GPU stack onto the CPU.
+keep_mode() {
+  case " ${COMPOSE[*]} " in
+    *" docker-compose.gpu.yml "*) return 0 ;;
+  esac
+  if gpu_in_use; then
+    COMPOSE+=(-f docker-compose.gpu.yml)
+    info "GPU mode detected on the running worker — keeping docker-compose.gpu.yml."
+  fi
+}
+
 wait_for_http() {
   local url=$1 label=$2 deadline=$((SECONDS + READY_TIMEOUT))
   printf '  waiting for %s' "$label"
@@ -226,8 +248,8 @@ case "${1:-start}" in
   start)   start ;;
   gpu)     start gpu ;;
   stop)    need_docker; bold "Stopping (data volumes kept)…"; "${COMPOSE[@]}" down ;;
-  restart) need_docker; bold "Restarting…"; "${COMPOSE[@]}" up -d --force-recreate api worker frontend; wait_for_http "$API_URL/v1/health/ready" "the API" || true ;;
-  rebuild) need_docker; bold "Rebuilding…"; "${COMPOSE[@]}" build; "${COMPOSE[@]}" up -d; wait_for_http "$API_URL/v1/health/ready" "the API" || true ;;
+  restart) need_docker; keep_mode; bold "Restarting…"; "${COMPOSE[@]}" up -d --force-recreate api worker frontend; wait_for_http "$API_URL/v1/health/ready" "the API" || true ;;
+  rebuild) need_docker; keep_mode; bold "Rebuilding…"; "${COMPOSE[@]}" build; "${COMPOSE[@]}" up -d; wait_for_http "$API_URL/v1/health/ready" "the API" || true ;;
   logs)    need_docker; shift || true; "${COMPOSE[@]}" logs -f --tail=100 "$@" ;;
   status)  status ;;
   mlflow)  mlflow ;;

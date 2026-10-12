@@ -16,7 +16,11 @@ GPU, the actual Temporal server and the actual object store.
 **Docs**: the full documentation builds as a site —
 <https://abdul-jaweed.github.io/stt-platform/> — and the pipeline, failure
 behaviour and capacity story live in
-[docs/pipeline-and-reliability.md](docs/pipeline-and-reliability.md).
+[docs/pipeline-and-reliability.md](docs/pipeline-and-reliability.md). The
+archify architecture diagrams have their own standalone section at
+<https://abdul-jaweed.github.io/stt-platform/architecture/> — deliberately
+outside the documentation navigation, with the gate receipts and an honest
+note about the one diagram that was authored but never delivered.
 
 ![Transcript page — segments with word-level timestamps](docs/images/ui-transcript.png)
 
@@ -444,6 +448,7 @@ time, and the evaluation corpus is regenerated with
 | Document | Contents |
 |---|---|
 | `docs/architecture.md` | architecture, ADR log, ports |
+| `docs/architecture/` | archify diagrams (self-contained HTML) + typed JSON + gate receipts — served at `/architecture/`, outside the docs nav |
 | `docs/api.md` | `/v1` walkthrough with verified example runs |
 | `docs/reliability.md` | guarantees (outbox, retries, cancellation), known gaps |
 | `docs/providers.md` | capability matrix, config, fidelity rules |

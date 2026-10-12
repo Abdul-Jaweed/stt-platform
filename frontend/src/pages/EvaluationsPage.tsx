@@ -253,88 +253,6 @@ function ComparisonTable({
   );
 }
 
-function GroupTable({ record }: { record: EvaluationRecord }) {
-  const groups = Object.entries(record.by_group ?? {});
-  if (groups.length === 0) return null;
-
-  return (
-    <>
-      <h4>By group</h4>
-      <div className="table-scroll">
-        <table aria-label="By group">
-          <thead>
-            <tr>
-              <th scope="col">Group</th>
-              <th scope="col">Provider</th>
-              <th scope="col">Clips</th>
-              <th scope="col">WER</th>
-              <th scope="col">CER</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.flatMap(([group, entries]) =>
-              Object.entries(entries ?? {}).map(([key, metrics]) => (
-                <tr key={`${group}:${key}`}>
-                  <td>{group}</td>
-                  <td>{key}</td>
-                  <td>{metrics.clips_scored ?? "—"}</td>
-                  <td>{percent(metrics.wer_micro ?? null)}</td>
-                  <td>{percent(metrics.cer_micro ?? null)}</td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-function ClipTable({ record }: { record: EvaluationRecord }) {
-  return (
-    <div className="table-scroll">
-      <table aria-label="Clips">
-        <thead>
-          <tr>
-            <th scope="col">Clip</th>
-            <th scope="col">Status</th>
-            <th scope="col">WER</th>
-            <th scope="col">CER</th>
-            <th scope="col">Processing</th>
-            <th scope="col">RTF</th>
-            <th scope="col">Words</th>
-            <th scope="col">Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          {record.clips.map((clip) => (
-            <tr key={clip.clip_id}>
-              <td>{clip.clip_id}</td>
-              <td>{clip.status}</td>
-              <td>{percent(clip.wer)}</td>
-              <td>{percent(clip.cer)}</td>
-              <td>{seconds(clip.timings.processing_s)}</td>
-              <td>
-                {clip.timings.real_time_factor === null ||
-                clip.timings.real_time_factor === undefined
-                  ? "—"
-                  : clip.timings.real_time_factor.toFixed(3)}
-              </td>
-              <td>
-                {clip.timestamps?.word_availability === null ||
-                clip.timestamps?.word_availability === undefined
-                  ? "not reported"
-                  : percent(clip.timestamps.word_availability as number)}
-              </td>
-              <td>{clip.error ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function EvaluationsPage() {
   const api = useApi();
   const [rows, setRows] = useState<EvaluationComparisonRow[]>([]);
@@ -358,6 +276,9 @@ export default function EvaluationsPage() {
     code: string;
     message: string;
   } | null>(null);
+  const [artifact, setArtifact] = useState<EvaluationArtifact | null>(null);
+  const [artifactError, setArtifactError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<MetricExplanation[]>([]);
   const [query, setQuery] = useState("");
   const [onlyFailures, setOnlyFailures] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
@@ -451,7 +372,9 @@ export default function EvaluationsPage() {
         language: language.trim() || undefined,
         provider: provider || undefined,
       });
-      setDetail(record);
+      // Show it the moment it exists — record, artifact and explanations —
+      // the same way a run opened from the table is shown.
+      await load(record.evaluation_id);
       await refresh();
     } catch (err) {
       setRunError(toFailure(err));
@@ -463,11 +386,34 @@ export default function EvaluationsPage() {
 
   async function load(id: string) {
     setLoadError(null);
-    try {
-      setDetail(await api.getEvaluation(id));
-    } catch (err) {
-      setLoadError(toFailure(err));
+    if (!id) return;
+    // Three independent reads. The record is required; the artifact and the
+    // metric explanations are not — a deployment without storage must still
+    // render the run, with the honest note, rather than nothing at all.
+    const [recordResult, artifactResult, metricsResult] =
+      await Promise.allSettled([
+        api.getEvaluation(id),
+        api.getEvaluationArtifact(id),
+        api.getEvaluationMetrics(),
+      ]);
+    if (recordResult.status === "rejected") {
+      setLoadError(toFailure(recordResult.reason));
+      return;
     }
+    setDetail(recordResult.value);
+    setArtifact(
+      artifactResult.status === "fulfilled" ? artifactResult.value : null,
+    );
+    setArtifactError(
+      artifactResult.status === "fulfilled"
+        ? null
+        : describeFailure(artifactResult.reason),
+    );
+    setMetrics(
+      metricsResult.status === "fulfilled"
+        ? (metricsResult.value.metrics ?? [])
+        : [],
+    );
   }
 
   return (
@@ -643,47 +589,19 @@ export default function EvaluationsPage() {
       </section>
 
       {detail && (
-        <section
-          className="card evaluation-detail"
-          data-testid="evaluation-detail"
-          aria-labelledby="detail-heading"
-        >
-          <div className="detail-head">
-            <h3 id="detail-heading">
-              {detail.evaluation_id} — {detail.provider}
-              {detail.model ? ` (${detail.model})` : ""}
-            </h3>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => setDetail(null)}
-            >
-              <X size={14} aria-hidden="true" />
-              Close
-            </button>
-          </div>
-          <p className="hint">
-            {detail.dataset_id}@{detail.dataset_version} ·{" "}
-            {String(detail.aggregate.clips_scored ?? 0)}/
-            {String(detail.aggregate.clips_total ?? 0)} clips scored · WER{" "}
-            {percent(detail.aggregate.wer_micro as number | null)} · CER{" "}
-            {percent(detail.aggregate.cer_micro as number | null)} · RTF{" "}
-            {detail.aggregate.rtf_mean === null ||
-            detail.aggregate.rtf_mean === undefined
-              ? "—"
-              : (detail.aggregate.rtf_mean as number).toFixed(3)}{" "}
-            · normalization {String(detail.normalization.name ?? "unknown")}
-          </p>
-          {detail.insufficient_evidence && (
-            <p className="hint">
-              Insufficient evidence to rank: too few scored clips.
-            </p>
-          )}
-          <MlflowStatus outcome={detail.mlflow} />
-          <GroupTable record={detail} />
-          <h4>Clips</h4>
-          <ClipTable record={detail} />
-        </section>
+        <EvaluationRunDetail
+          key={detail.evaluation_id}
+          record={detail}
+          artifact={artifact}
+          artifactError={artifactError}
+          metrics={metrics}
+          onClose={() => {
+            setDetail(null);
+            setArtifact(null);
+            setArtifactError(null);
+            setMetrics([]);
+          }}
+        />
       )}
     </section>
   );
@@ -692,4 +610,15 @@ export default function EvaluationsPage() {
 function toFailure(err: unknown): { code: string; message: string } {
   if (err instanceof ApiError) return { code: err.code, message: err.message };
   return { code: "UNKNOWN_ERROR", message: String(err) };
+}
+
+/**
+ * The artifact endpoint answers honestly when it has nothing to serve: 404
+ * ARTIFACT_NOT_FOUND for a run that stored none, 503 STORAGE_NOT_CONFIGURED
+ * for a deployment without storage. Keep the code in front so the two cases
+ * stay distinguishable where the detail renders the note.
+ */
+function describeFailure(err: unknown): string {
+  const failure = toFailure(err);
+  return `${failure.code}: ${failure.message}`;
 }

@@ -283,3 +283,48 @@ report with A–G sections and an honest passed/failed/blocked/not-run table.
   adapters (their batch paths are complete; their streaming paths are
   documented as proposals only). Recorded here rather than implied by a
   capability flag.
+
+### S6 — evaluations UX revamp ✅
+
+- `src/lib/alignment.ts`: a strict walker over the artifact's alignment
+  (the server's M/S/D/I code plus both normalized token lists) and a counts
+  reader over the same parts. It throws on an unknown letter, on a step
+  that outruns either list, on tokens left over when the code ends, and on
+  a missing alphabet — a diff that cannot be trusted is an error, never a
+  quiet truncation.
+- `EvaluationRunDetail.tsx`: header (monospace copyable id, provider/model,
+  dataset@version, status, timings, mlflow outcome), metric cards whose
+  `<details>` carry the server's own formula / `computed_by` /
+  `applies_to` / edge behaviour / limitations — a metric with no
+  explanation is *flagged*, never explained away — a searchable,
+  click-sortable, 10-per-page clip table, the reference-vs-transcript diff
+  with per-token classes and a legend, the honest "no transcript, nothing
+  to compare" state for a failed clip, and a methodology panel that states
+  the transcription-result vs evaluation-run distinction.
+- Nulls render as an em dash plus "not measured", never 0.
+- `EvaluationsPage` loads record + artifact + metrics together and renders
+  the detail with the honest artifact note (typed 404 / 503 / network)
+  when the document is missing.
+- Frontend 214 tests (was 190), build clean. Every new behaviour carries
+  the RED it was written against in the task record.
+
+### S7 — landing page revamp ✅
+
+- Brand: **Evidance** with a provider-neutral tagline, BrandMark kept, CTAs
+  to the console (`/upload`), the repository and its docs.
+- Capabilities come strictly from the live `GET /v1/providers` payload —
+  every flag rendered as reported, limits shown only when present, and an
+  honest unavailable state with a retry when the API cannot be reached.
+  Nothing about a provider is invented.
+- A plain-text pipeline section (upload → object storage → sync or durable
+  Temporal job → provider adapter → timestamped segments → result) and an
+  honest limits section (local CPU/GPU model, key-gated managed providers,
+  local-first streaming, no local diarization, no silent fallback).
+- Landmarks, one h1, sectioned h2s, aria-hidden decorative Phosphor icons;
+  10 new tests; the two existing tests that were updated are recorded
+  (the CTA target changed by the directive, and the provider names are now
+  asserted against the mocked directory rather than static copy).
+
+Note on method: S7's and S10's files were swept into the S8 commit by a
+`git add -A` run while subagents were mid-flight. Everything is verified
+green, but the commit-to-slice mapping was muddled; the practice stopped.

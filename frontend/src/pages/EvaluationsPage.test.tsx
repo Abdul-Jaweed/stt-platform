@@ -283,6 +283,9 @@ test("per-clip scores are visible for a loaded evaluation", async () => {
 
 test("draws error rates as meters as well as numbers", async () => {
   server.use(
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({ providers: [] }),
+    ),
     http.get(`${BASE}/v1/evaluations`, () =>
       HttpResponse.json({
         evaluations: [
@@ -595,7 +598,7 @@ function metricsHandler(metrics: unknown[] = []) {
   );
 }
 
-function artifactHandler(id: string, body: unknown) {
+function artifactHandler(id: string, body: object) {
   return http.get(`${BASE}/v1/evaluations/${id}/artifact`, () =>
     HttpResponse.json(body),
   );

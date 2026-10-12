@@ -79,3 +79,27 @@ class EvaluationRequest(BaseModel):
 class EvaluationList(BaseModel):
     evaluations: list[EvaluationComparisonRow] = Field(default_factory=list)
     count: int = 0
+
+
+class MetricExplanation(BaseModel):
+    """One evaluation metric, explained next to the code that computes it.
+
+    ``computed_by`` names the callable the number actually comes from; the
+    text fields say what the number means, where it can mislead, and when it
+    is absent instead of zero.
+    """
+
+    name: str
+    applies_to: str
+    unit: str
+    direction: str
+    formula: str
+    inputs: str
+    normalization: str
+    edge_behaviour: str
+    limitations: str
+    computed_by: str
+
+
+class MetricExplanationList(BaseModel):
+    metrics: list[MetricExplanation]

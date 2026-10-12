@@ -16,6 +16,7 @@ from stt_platform.domain.errors import (
     AudioValidationError,
     DatasetNotFound,
     DatasetNotReady,
+    EvaluationArtifactMissing,
     EvaluationTooLarge,
     IdempotencyConflict,
     InvalidObjectKey,
@@ -51,6 +52,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     LivePreviewUnsupported: (422, "LIVE_PREVIEW_LOCAL_ONLY"),
     EvaluationTooLarge: (422, "EVALUATION_TOO_LARGE"),
     EvaluationNotFound: (404, "EVALUATION_NOT_FOUND"),
+    EvaluationArtifactMissing: (404, "ARTIFACT_NOT_FOUND"),
     Unauthorized: (401, "UNAUTHORIZED"),
     RateLimited: (429, "RATE_LIMITED"),
 }

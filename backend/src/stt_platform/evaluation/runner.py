@@ -18,6 +18,8 @@ from typing import Any
 from stt_platform.evaluation.datasets import Clip, Dataset
 from stt_platform.evaluation.metrics import (
     AccuracyScore,
+    AlignmentReport,
+    MetricSpec,
     NormalizationRules,
     score,
 )
@@ -64,6 +66,11 @@ class ClipResult:
     attempts: int
     retries: int
     error: str | None
+    #: What the transcript was compared against, and how it lined up. Both
+    #: are ``None`` for a clip that never produced a transcript: there is
+    #: nothing to show, and an empty diff would read like an agreement.
+    reference_text: str | None = None
+    alignment: AlignmentReport | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +80,8 @@ class ClipResult:
             "model": self.model,
             "audio_sha256": self.audio_sha256,
             "transcript_text": self.transcript_text,
+            "reference_text": self.reference_text,
+            "alignment": self.alignment.as_dict() if self.alignment else None,
             "accuracy": self.accuracy.as_dict() if self.accuracy else None,
             "timestamps": self.timestamps.as_dict() if self.timestamps else None,
             "timings": self.timings,
@@ -159,6 +168,23 @@ def sha256_of(path: Path) -> str | None:
         return None
 
 
+def failure_rate(clips: list[ClipResult]) -> float | None:
+    """Clips that produced no accuracy, over every clip the run attempted."""
+    if not clips:
+        return None
+    return sum(1 for item in clips if item.accuracy is None) / len(clips)
+
+
+def rtf_mean(clips: list[ClipResult]) -> float | None:
+    """Mean processing seconds per audio second, over every clip."""
+    return _mean(item.timings.get("real_time_factor") for item in clips)
+
+
+def coverage_mean(clips: list[ClipResult]) -> float | None:
+    """Mean fraction of reference words that carry a timestamp."""
+    return _mean(item.timestamps.coverage for item in clips if item.timestamps)
+
+
 def _aggregate(clips: list[ClipResult]) -> dict[str, Any]:
     scored = [item for item in clips if item.accuracy is not None]
     summary = dict(aggregate_scores([item.accuracy for item in scored if item.accuracy]))
@@ -167,7 +193,7 @@ def _aggregate(clips: list[ClipResult]) -> dict[str, Any]:
         {
             "clips_total": len(clips),
             "failures": failures,
-            "failure_rate": failures / len(clips) if clips else None,
+            "failure_rate": failure_rate(clips),
             "retries_total": sum(item.retries for item in clips),
             "attempts_total": sum(item.attempts for item in clips),
             "queue_wait_p50": _percentile(
@@ -188,7 +214,7 @@ def _aggregate(clips: list[ClipResult]) -> dict[str, Any]:
             "end_to_end_p95": _percentile(
                 (item.timings.get("end_to_end_s") for item in clips), 0.95
             ),
-            "rtf_mean": _mean(item.timings.get("real_time_factor") for item in clips),
+            "rtf_mean": rtf_mean(clips),
             "segment_availability_mean": _mean(
                 item.timestamps.segment_availability
                 for item in clips
@@ -204,9 +230,7 @@ def _aggregate(clips: list[ClipResult]) -> dict[str, Any]:
                 for item in clips
                 if item.timestamps
             ),
-            "coverage_mean": _mean(
-                item.timestamps.coverage for item in clips if item.timestamps
-            ),
+            "coverage_mean": coverage_mean(clips),
             "monotonicity_violations_total": sum(
                 item.timestamps.monotonicity_violations
                 for item in clips
@@ -270,6 +294,8 @@ def run_evaluation(
                     model=model,
                     audio_sha256=sha256_of(clip.audio) or clip.sha256,
                     transcript_text=None,
+                    reference_text=clip.reference_text,
+                    alignment=None,
                     accuracy=None,
                     timestamps=None,
                     timings={},
@@ -281,6 +307,7 @@ def run_evaluation(
             continue
 
         accuracy = score(clip.reference_text or "", outcome.text, rules)
+        alignment = AlignmentReport.between(clip.reference_text or "", outcome.text, rules)
         timestamps = evaluate_timestamps(
             reference_segments=clip.reference_segments,
             hypothesis_segments=outcome.segments,
@@ -295,6 +322,8 @@ def run_evaluation(
                 model=outcome.model or model,
                 audio_sha256=sha256_of(clip.audio) or clip.sha256,
                 transcript_text=outcome.text,
+                reference_text=clip.reference_text,
+                alignment=alignment,
                 accuracy=accuracy,
                 timestamps=timestamps,
                 timings=dict(outcome.timings),
@@ -331,3 +360,58 @@ def run_evaluation(
         finished_at=time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(finished)),
         duration_s=round(finished - started, 3),
     )
+
+
+#: The run-level numbers that are not accuracy rates, explained next to the
+#: functions that compute them — the same rule as ``METRIC_SPECS``.
+RUNNER_METRIC_SPECS: dict[str, MetricSpec] = {
+    spec.name: spec
+    for spec in (
+        MetricSpec(
+            name="failure_rate",
+            applies_to="run aggregate",
+            unit="ratio — failed clips over attempted clips (0.0 is perfect)",
+            direction="lower is better",
+            formula="clips with no accuracy / clips attempted",
+            inputs="every clip the run attempted, scored and failed alike",
+            normalization="none: a failure is counted as it happened",
+            edge_behaviour="null when the run attempted no clips",
+            limitations=(
+                "says nothing about *why* a clip failed; the per-clip error "
+                "field carries that. A clip skipped before transcription is "
+                "absent from the run, not counted here."
+            ),
+            compute=failure_rate,
+        ),
+        MetricSpec(
+            name="rtf_mean",
+            applies_to="run aggregate",
+            unit="ratio — processing seconds per audio second",
+            direction="lower is better",
+            formula="mean(processing seconds / audio seconds), per clip",
+            inputs="the provider's own timing (queue wait excluded)",
+            normalization="none",
+            edge_behaviour="null for clips the provider timed, none of which it did",
+            limitations=(
+                "includes model warm-up on a cold worker, which one run's first "
+                "clip carries and the rest do not."
+            ),
+            compute=rtf_mean,
+        ),
+        MetricSpec(
+            name="coverage_mean",
+            applies_to="run aggregate",
+            unit="ratio — share of reference words with a timestamp (0.0-1.0)",
+            direction="higher is better",
+            formula="mean(fraction of reference words covered by a timestamp)",
+            inputs="clips whose timestamps could be evaluated at all",
+            normalization="none",
+            edge_behaviour="null when no clip had scoreable timestamps",
+            limitations=(
+                "coverage says nothing about *accuracy* of the timestamps; "
+                "boundary_error_mean_s and monotonicity_violations_total do."
+            ),
+            compute=coverage_mean,
+        ),
+    )
+}

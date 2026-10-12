@@ -106,7 +106,7 @@ def make_client(pg_engine, pg_url, corpus, memory_store):
     built = []
     store = memory_store
 
-    def _make(*providers, **setting_overrides):
+    def _make(*providers, with_store: bool = True, **setting_overrides):
         store.objects.clear()
         Base.metadata.drop_all(pg_engine)
         Base.metadata.create_all(pg_engine)
@@ -125,7 +125,11 @@ def make_client(pg_engine, pg_url, corpus, memory_store):
         registry = ProviderRegistry()
         for provider in providers or (FakeProvider(),):
             registry.register(provider)
-        app = create_app(settings=Settings(**values), registry=registry, store=store)
+        app = create_app(
+            settings=Settings(**values),
+            registry=registry,
+            store=store if with_store else None,
+        )
         client = TestClient(app)
         built.append((client, app))
         return client
@@ -250,3 +254,78 @@ def test_evaluation_records_the_provider_that_actually_ran(make_client):
     assert all(clip["provider"] == "fake" for clip in body["clips"])
     assert all(clip["model"] == "fake-whisper" for clip in body["clips"]), body["clips"][0]["error"]
     assert all(clip["audio_sha256"] for clip in body["clips"])
+
+
+def test_the_metrics_endpoint_explains_every_metric_it_reports(make_client):
+    client = make_client()
+    """The explanations come from the specs the code computes with: the
+    endpoint names the callable, the formula and the limits for each, and it
+    covers the accuracy rates and the run-level numbers alike."""
+    response = client.get("/v1/evaluations/metrics")
+
+    assert response.status_code == 200, response.text
+    metrics = {item["name"]: item for item in response.json()["metrics"]}
+    assert {"wer", "cer", "wer_micro", "wer_macro", "cer_micro", "cer_macro"} <= set(metrics)
+    assert {"failure_rate", "rtf_mean", "coverage_mean"} <= set(metrics)
+
+    wer = metrics["wer"]
+    assert wer["computed_by"] == "wer_from_counts"
+    assert wer["applies_to"] == "per clip"
+    assert "reference words" in wer["formula"]
+    assert wer["edge_behaviour"] and wer["limitations"]
+    assert metrics["failure_rate"]["computed_by"] == "failure_rate"
+
+
+def test_the_metrics_endpoint_needs_a_session_like_everything_else(make_client):
+    """Explanations are not a secret, but the /v1 surface has one door."""
+    client = make_client(auth_enabled=True, api_keys="k1:local")
+    assert client.get("/v1/evaluations/metrics").status_code == 401
+
+
+def test_a_run_exposes_the_stored_artifact_with_its_per_clip_diff(make_client, memory_store):
+    """The record is an index; the artifact is the evidence. The diff the UI
+    renders -- reference, transcript, token-level ops -- comes from here, so
+    that the numbers on the record and the words behind them are the same
+    run's."""
+    client = make_client()
+    record = client.post(
+        "/v1/evaluations",
+        json={"dataset_id": "mini-eval", "provider": "fake"},
+    ).json()
+
+    response = client.get(f"/v1/evaluations/{record['evaluation_id']}/artifact")
+
+    assert response.status_code == 200, response.text
+    artifact = response.json()
+    assert artifact["dataset"]["dataset_id"] == "mini-eval"
+    clip = artifact["clips"][0]
+    assert clip["reference_text"]
+    assert clip["transcript_text"] is not None
+    assert clip["alignment"]["code"]
+    assert set(clip["alignment"]["alphabet"]) == {
+        "equal", "substitute", "delete", "insert",
+    }
+    # The alignment walks the very token lists it ships.
+    code = clip["alignment"]["code"]
+    reference_ops = sum(1 for char in code if char in "MSD")
+    hypothesis_ops = sum(1 for char in code if char in "MSI")
+    assert reference_ops == len(clip["alignment"]["reference_tokens"])
+    assert hypothesis_ops == len(clip["alignment"]["hypothesis_tokens"])
+
+
+def test_an_unknown_run_has_no_artifact(make_client):
+    client = make_client()
+    assert client.get("/v1/evaluations/nope/artifact").status_code == 404
+
+
+def test_a_run_without_a_store_says_so_instead_of_inventing_an_artifact(make_client):
+    client = make_client(with_store=False)
+    record = client.post(
+        "/v1/evaluations",
+        json={"dataset_id": "mini-eval", "provider": "fake"},
+    ).json()
+
+    response = client.get(f"/v1/evaluations/{record['evaluation_id']}/artifact")
+
+    assert response.status_code == 503, response.text
+    assert "STORAGE_NOT_CONFIGURED" in response.text

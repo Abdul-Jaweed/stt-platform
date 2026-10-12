@@ -86,6 +86,16 @@ class StorageNotConfigured(DomainError):
         super().__init__("STORAGE_NOT_CONFIGURED", message)
 
 
+class EvaluationArtifactMissing(DomainError):
+    """The run has no stored artifact to serve (never stored, or gone)."""
+
+    def __init__(self, evaluation_id: str) -> None:
+        super().__init__(
+            "ARTIFACT_NOT_FOUND",
+            f"evaluation {evaluation_id!r} has no stored artifact",
+        )
+
+
 class InvalidObjectKey(DomainError):
     """A client-supplied object key is malformed or out of scope."""
 

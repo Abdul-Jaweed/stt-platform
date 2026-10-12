@@ -197,3 +197,51 @@ numbers 0.69 (§3). By noise: clean 0.136, noisy 0.000.
 - Cost per audio minute is not computed (§4).
 - MLflow is optional: with it disabled, comparisons live only in PostgreSQL
   and the API.
+
+## Every number carries its explanation
+
+`GET /v1/evaluations/metrics` returns one entry per metric the platform
+reports — the six accuracy rates (`wer`, `cer`, `wer_micro`, `wer_macro`,
+`cer_micro`, `cer_macro`) plus the run-level numbers (`failure_rate`,
+`rtf_mean`, `coverage_mean`). Each entry states the unit, the direction,
+the formula, the inputs, the normalization, what happens at the edge (an
+empty reference is `null`, never `0.0`) and where the metric can mislead —
+`wer_micro` lets one long clip outweigh several short ones, `wer_macro`
+gives a two-word clip the same weight as a two-minute one, and so on.
+
+The explanations are not a string table: each one is generated from the
+`MetricSpec` whose `compute` field **is** the function that produces the
+value (`wer_from_counts`, `wer_micro`, `failure_rate`, …). The endpoint
+reports that callable's name as `computed_by`, and unit tests assert the
+specs point at those exact functions and that `aggregate()` builds its
+numbers from them — so an explanation cannot describe a formula the code
+does not implement.
+
+## The diff behind a WER
+
+Each scored clip in the artifact carries `reference_text`, the provider's
+`transcript_text`, the counts, and an `alignment` object:
+
+```json
+{
+  "code": "MSMD",
+  "alphabet": {"equal": "M", "substitute": "S", "delete": "D", "insert": "I"},
+  "reference_tokens": ["the", "quick", "brown", "fox"],
+  "hypothesis_tokens": ["the", "slow", "brown"]
+}
+```
+
+`code` walks both token lists from the left: `M` consumes one token from
+each, `S` consumes one from each (they differ), `D` consumes a reference
+token alone, `I` a hypothesis token alone. The counts a run reports are
+read off this same alignment (`edit_counts` *is* the alignment counted), so
+the diff and the number can never disagree — a property test asserts it
+over hundreds of random pairs, and cross-checks the distance against
+`jiwer`, which is written by someone else. Where two alignments cost the
+same, the tie order is fixed and documented (substitution, then deletion) —
+which is why only the *distance*, not the S/D/I breakdown, is comparable
+across implementations.
+
+A clip that produced no transcript carries `"alignment": null`. A skipped
+or failed clip has no diff; rendering an empty one would read like an
+agreement.

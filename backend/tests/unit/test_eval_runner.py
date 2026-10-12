@@ -221,3 +221,60 @@ def test_result_is_recordable():
     assert payload["clips"][0]["accuracy"]["wer"] == 0.0
     assert payload["insufficient_evidence"] is False
     assert payload["duration_s"] >= 0
+
+
+def test_each_scored_clip_carries_its_reference_and_alignment():
+    """The artifact must let a reader (or the UI) see *what was compared*:
+    the reference, the transcript, and the per-token ops behind the WER."""
+    dataset = _dataset(_clip("c1", "the quick brown fox"))
+    result = run_evaluation(
+        dataset=dataset,
+        provider="fake",
+        model=None,
+        transcribe=lambda clip: ClipOutcome(
+            text="the slow brown",
+            segments=(),
+            granularity=None,
+            timings={},
+            attempts=1,
+            retries=0,
+            provider="fake",
+        ),
+    )
+
+    clip = result.as_dict()["clips"][0]
+    assert clip["reference_text"] == "the quick brown fox"
+    alignment = clip["alignment"]
+    assert alignment["code"] == "MSMD"
+    assert alignment["reference_tokens"] == ["the", "quick", "brown", "fox"]
+    assert alignment["hypothesis_tokens"] == ["the", "slow", "brown"]
+    assert clip["accuracy"]["word_errors"]["substitutions"] == 1
+    assert clip["accuracy"]["word_errors"]["deletions"] == 1
+
+
+def test_a_failed_clip_carries_no_alignment_at_all():
+    """A clip nobody transcribed has nothing to align: ``None``, not an empty
+    diff that would read like an agreement."""
+    dataset = _dataset(_clip("c1", "the quick brown fox"))
+
+    def boom(clip):
+        raise RuntimeError("provider exploded")
+
+    result = run_evaluation(
+        dataset=dataset, provider="fake", model=None, transcribe=boom
+    )
+
+    clip = result.as_dict()["clips"][0]
+    assert clip["status"] == "failed"
+    assert clip["alignment"] is None
+    assert clip["reference_text"] == "the quick brown fox"
+
+
+def test_the_aggregate_metrics_are_explained_in_the_same_place():
+    from stt_platform.evaluation.runner import RUNNER_METRIC_SPECS
+
+    assert RUNNER_METRIC_SPECS, "aggregate metrics are not described"
+    for name in ("failure_rate", "rtf_mean", "coverage_mean"):
+        spec = RUNNER_METRIC_SPECS[name]
+        assert spec.formula.strip() and spec.limitations.strip()
+        assert callable(spec.compute)

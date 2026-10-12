@@ -224,3 +224,37 @@ report with A–G sections and an honest passed/failed/blocked/not-run table.
   `/login` — while the deployed bundle demonstrably carries the panel code
   and the live `/v1/auth/config` answers with the new shape. The dev flow
   (`STT_ENVIRONMENT=local`) shows the panel.
+
+### S5 — evaluation explainability, backend side ✅
+
+- **The diff and the number come from one machinery.** `align()` produces
+  the token-level ops (M/S/D/I); `edit_counts` now *is* that alignment
+  counted, so a run's counts and the diff a reader sees cannot disagree.
+  A property test asserts it over 300 random pairs and cross-checks the
+  distance against `jiwer` — which surfaced a real subtlety worth
+  documenting: tie-costed alignments are not unique, so only the *distance*
+  is comparable across implementations, never the S/D/I breakdown. The tie
+  order (substitution, then deletion) is fixed and documented.
+- **Explanations generated from the implementation.** `MetricSpec` carries
+  the formula, unit, inputs, normalization, edge behaviour and limitations
+  *next to* the callable that computes the value; `aggregate()` builds its
+  numbers from those same functions (`wer_from_counts`, `wer_micro`,
+  `failure_rate`, …). Unit tests assert the specs point at those exact
+  objects and that the described values equal the reported ones.
+- **The artifact carries the evidence**: each scored clip now ships
+  `reference_text`, `transcript_text` and a compact `alignment`
+  (`code` + alphabet legend + both normalized token lists); a failed clip
+  carries `null` — never an empty diff that would read like an agreement.
+- **Two endpoints**: `GET /v1/evaluations/metrics` (the explanations, nine
+  of them) and `GET /v1/evaluations/{id}/artifact` (the stored document, so
+  the console can render the diff without a second storage path — 404
+  `ARTIFACT_NOT_FOUND` when a run stored none, 503 when no storage is
+  configured).
+- Live, on the deployed stack: a real 8-clip evaluation
+  (`448149f3703844d18958f3f55c4bff23`, wer_micro 0.10, wer_macro 0.118) then
+  the artifact fetched through the new endpoint — the first clip's code is
+  16 `M`s against `reference_units: 16`, and the code walks both token
+  lists. The live check is also what caught that the *record* is an index
+  and the words live in the artifact.
+- Route pins, `docs/openapi.json` (18 paths), `docs/api.md` and
+  `docs/evaluation.md` updated; backend 566 passed / 3 skipped, ruff clean.

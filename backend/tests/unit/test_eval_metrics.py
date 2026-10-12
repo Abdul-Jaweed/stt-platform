@@ -11,12 +11,18 @@ import pytest
 
 from stt_platform.evaluation.metrics import (
     DEFAULT_RULES,
+    METRIC_SPECS,
+    AccuracyScore,
     NormalizationRules,
     aggregate,
+    align,
+    alignment_code,
+    cer_from_counts,
     edit_counts,
     normalize,
     score,
     tokens,
+    wer_from_counts,
 )
 
 # --------------------------------------------------------------- normalization
@@ -180,3 +186,126 @@ def test_cer_agrees_with_jiwer(reference: str, hypothesis: str):
     hypothesis_chars = normalize(hypothesis).replace(" ", "")
     theirs = jiwer.cer(reference_chars, hypothesis_chars)
     assert ours == pytest.approx(theirs, abs=1e-9)
+
+
+# ---------------------------------------------------------------- alignment
+
+
+def test_alignment_names_every_operation_between_the_two_token_lists():
+    ops = align(["the", "quick", "brown", "fox"], ["the", "slow", "brown"])
+
+    assert [(op.kind, op.reference, op.hypothesis) for op in ops] == [
+        ("equal", "the", "the"),
+        ("substitute", "quick", "slow"),
+        ("equal", "brown", "brown"),
+        ("delete", "fox", None),
+    ]
+
+
+def test_alignment_walks_both_sequences_exactly_once():
+    reference = ["a", "b", "c", "d"]
+    hypothesis = ["a", "x", "d", "e", "f"]
+    ops = align(reference, hypothesis)
+
+    rebuilt_reference = [op.reference for op in ops if op.reference is not None]
+    rebuilt_hypothesis = [op.hypothesis for op in ops if op.hypothesis is not None]
+    assert rebuilt_reference == reference
+    assert rebuilt_hypothesis == hypothesis
+
+
+def test_the_alignment_code_uses_the_documented_alphabet():
+    code = alignment_code(align(["a", "b", "c"], ["a", "c"]))
+    assert set(code) <= {"M", "S", "D", "I"}
+    assert code == "MDM"
+
+
+def test_alignment_reproduces_the_reported_counts_exactly():
+    """The acceptance criterion: the per-clip counts and the token-level
+    alignment come from one machinery, so the counts can never disagree with
+    the diff -- and both agree with jiwer, which is written by someone else."""
+    import random
+
+    random.seed(20261012)
+    vocabulary = ["a", "b", "c", "d", "e"]
+    for _ in range(300):
+        reference = [random.choice(vocabulary) for _ in range(random.randint(0, 9))]
+        hypothesis = [random.choice(vocabulary) for _ in range(random.randint(0, 9))]
+
+        counts = edit_counts(reference, hypothesis)
+        ops = align(reference, hypothesis)
+        kinds = [op.kind for op in ops]
+        assert kinds.count("substitute") == counts.substitutions
+        assert kinds.count("delete") == counts.deletions
+        assert kinds.count("insert") == counts.insertions
+        assert alignment_code(ops) == "".join(
+            {"equal": "M", "substitute": "S", "delete": "D", "insert": "I"}[kind]
+            for kind in kinds
+        )
+
+        reference_text = " ".join(reference)
+        hypothesis_text = " ".join(hypothesis)
+        theirs = jiwer.process_words(reference_text, hypothesis_text)
+        # Only the *distance* is comparable across implementations: when two
+        # alignments cost the same, each library is free to break the tie
+        # differently (ours prefers substitution, then deletion, and says so).
+        # What must agree exactly is our own alignment and our own counts —
+        # asserted above.
+        assert counts.errors == (
+            theirs.substitutions + theirs.deletions + theirs.insertions
+        )
+
+
+# ------------------------------------------------- explanations for the metrics
+
+
+def test_every_metric_spec_explains_itself():
+    assert METRIC_SPECS, "no metrics are described"
+    for name, spec in METRIC_SPECS.items():
+        assert spec.name == name
+        for attribute in (
+            "unit",
+            "direction",
+            "formula",
+            "inputs",
+            "normalization",
+            "edge_behaviour",
+            "limitations",
+            "applies_to",
+        ):
+            value = getattr(spec, attribute)
+            assert isinstance(value, str) and value.strip(), (
+                f"{name}.{attribute} is empty"
+            )
+
+
+def test_the_explanations_point_at_the_functions_that_compute_the_values():
+    """Not a string table: each explanation carries the callable that
+    produces the number, and the aggregate builds its numbers from the same
+    functions."""
+    from stt_platform.evaluation import metrics as module
+
+    assert METRIC_SPECS["wer"].compute is module.wer_from_counts
+    assert METRIC_SPECS["cer"].compute is module.cer_from_counts
+    assert METRIC_SPECS["wer_micro"].compute is module.wer_micro
+    assert METRIC_SPECS["wer_macro"].compute is module.wer_macro
+    assert METRIC_SPECS["cer_micro"].compute is module.cer_micro
+    assert METRIC_SPECS["cer_macro"].compute is module.cer_macro
+
+
+def test_the_described_values_are_the_reported_values():
+    reference = "the quick brown fox jumps"
+    hypothesis = "the slow brown fox"
+    one = score(reference, hypothesis)
+    two = score("a b c", "a b c")
+    scores = [one, two]
+    summary = aggregate(scores)
+
+    assert METRIC_SPECS["wer"].compute(one.word_errors) == one.wer
+    assert METRIC_SPECS["cer"].compute(one.char_errors) == one.cer
+    assert METRIC_SPECS["wer_micro"].compute(scores) == summary["wer_micro"]
+    assert METRIC_SPECS["wer_macro"].compute(scores) == summary["wer_macro"]
+    assert METRIC_SPECS["cer_micro"].compute(scores) == summary["cer_micro"]
+    assert METRIC_SPECS["cer_macro"].compute(scores) == summary["cer_macro"]
+    assert wer_from_counts(one.word_errors) == one.wer
+    assert cer_from_counts(one.char_errors) == one.cer
+    assert isinstance(one, AccuracyScore)

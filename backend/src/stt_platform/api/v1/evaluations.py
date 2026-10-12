@@ -10,6 +10,9 @@ The provider that *actually* ran is recorded per clip, from the job record;
 """
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 
 from stt_platform.api.deps import get_service, get_session
@@ -17,22 +20,27 @@ from stt_platform.api.security import get_scope
 from stt_platform.domain.errors import (
     DatasetNotFound,
     DatasetNotReady,
+    EvaluationArtifactMissing,
     EvaluationTooLarge,
     ProviderNotFound,
+    StorageNotConfigured,
 )
 from stt_platform.evaluation.datasets import (
     available_datasets,
     dataset_path,
     load_dataset,
 )
+from stt_platform.evaluation.metrics import METRIC_SPECS
 from stt_platform.evaluation.mlflow_logging import log_evaluation
 from stt_platform.evaluation.platform import PlatformTranscriber
-from stt_platform.evaluation.runner import run_evaluation
+from stt_platform.evaluation.runner import RUNNER_METRIC_SPECS, run_evaluation
 from stt_platform.persistence.evaluations import EvaluationRepository
 from stt_platform.schemas.evaluations import (
     EvaluationList,
     EvaluationRecord,
     EvaluationRequest,
+    MetricExplanation,
+    MetricExplanationList,
 )
 from stt_platform.services.jobs import JobService
 
@@ -104,11 +112,51 @@ def create_evaluation(
     return record
 
 
+@router.get("/{evaluation_id}/artifact")
+def get_evaluation_artifact(
+    evaluation_id: str, request: Request, session=Depends(get_session)
+) -> dict[str, Any]:
+    """The stored artifact: per-clip references, transcripts and alignments.
+
+    The record is the index — numbers, comparable across runs; the words
+    live in the artifact, exactly as transcripts live in object storage
+    rather than in the jobs table. This is how the console renders the diff
+    behind a WER, and it answers honestly when there is nothing to serve: a
+    run stored without a store says so instead of inventing a document.
+    """
+    record = EvaluationRepository(session).get(evaluation_id)
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise StorageNotConfigured("this deployment has no object storage configured")
+    if not record.artifact_key:
+        raise EvaluationArtifactMissing(evaluation_id)
+    try:
+        data = store.get_bytes(store.bucket_artifacts, record.artifact_key)
+    except Exception as exc:  # missing object, unreachable store
+        raise EvaluationArtifactMissing(evaluation_id) from exc
+    return json.loads(data)
+
+
 @router.get("", response_model=EvaluationList)
 def list_evaluations(request: Request, session=Depends(get_session)) -> EvaluationList:
     repository = EvaluationRepository(session)
     rows = repository.comparison()
     return EvaluationList(evaluations=rows, count=len(rows))
+
+
+@router.get("/metrics", response_model=MetricExplanationList)
+def list_metric_explanations() -> MetricExplanationList:
+    """Every metric the platform reports, with the callable behind it.
+
+    Served from the metric specs themselves, so this page cannot describe a
+    formula the code does not implement. Accuracy rates come from
+    ``evaluation.metrics``; the run-level numbers (failure rate, speed,
+    timestamp coverage) from ``evaluation.runner``.
+    """
+    specs = list(METRIC_SPECS.values()) + list(RUNNER_METRIC_SPECS.values())
+    return MetricExplanationList(
+        metrics=[MetricExplanation(**spec.describe()) for spec in specs]
+    )
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationRecord)

@@ -52,6 +52,33 @@
       "AuthConfig": {
         "description": "``GET /v1/auth/config`` — what the login page needs to know first.\n\nDeliberately not a secret: two booleans. ``dev_credentials`` is true only\nwhile the *development* defaults would actually work, so a login page can\nstop advertising credentials a deployment no longer uses.",
         "properties": {
+          "demo_mode": {
+            "default": false,
+            "title": "Demo Mode",
+            "type": "boolean"
+          },
+          "demo_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Password"
+          },
+          "demo_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Username"
+          },
           "dev_credentials": {
             "title": "Dev Credentials",
             "type": "boolean"
@@ -989,6 +1016,81 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MetricExplanation": {
+        "description": "One evaluation metric, explained next to the code that computes it.\n\n``computed_by`` names the callable the number actually comes from; the\ntext fields say what the number means, where it can mislead, and when it\nis absent instead of zero.",
+        "properties": {
+          "applies_to": {
+            "title": "Applies To",
+            "type": "string"
+          },
+          "computed_by": {
+            "title": "Computed By",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "edge_behaviour": {
+            "title": "Edge Behaviour",
+            "type": "string"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "inputs": {
+            "title": "Inputs",
+            "type": "string"
+          },
+          "limitations": {
+            "title": "Limitations",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "normalization": {
+            "title": "Normalization",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "applies_to",
+          "unit",
+          "direction",
+          "formula",
+          "inputs",
+          "normalization",
+          "edge_behaviour",
+          "limitations",
+          "computed_by"
+        ],
+        "title": "MetricExplanation",
+        "type": "object"
+      },
+      "MetricExplanationList": {
+        "properties": {
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricExplanation"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "metrics"
+        ],
+        "title": "MetricExplanationList",
+        "type": "object"
+      },
       "PresignRequest": {
         "description": "Ask for a slot to upload an original directly to object storage.",
         "properties": {
@@ -1340,7 +1442,7 @@
   "paths": {
     "/v1/auth/config": {
       "get": {
-        "description": "Public: the login page needs this before anyone has a session.\n\nIt answers whether login is required at all and whether the development\ndefaults are still in force. Neither answer is a secret, and neither\nreveals a credential.",
+        "description": "Public: the login page needs this before anyone has a session.\n\nIt answers whether login is required at all, whether the development\ndefaults are still in force, and whether the demo panel applies. No\nanswer here reveals a credential that is not already public.",
         "operationId": "config_v1_auth_config_get",
         "responses": {
           "200": {
@@ -1508,6 +1610,28 @@
         ]
       }
     },
+    "/v1/evaluations/metrics": {
+      "get": {
+        "description": "Every metric the platform reports, with the callable behind it.\n\nServed from the metric specs themselves, so this page cannot describe a\nformula the code does not implement. Accuracy rates come from\n``evaluation.metrics``; the run-level numbers (failure rate, speed,\ntimestamp coverage) from ``evaluation.runner``.",
+        "operationId": "list_metric_explanations_v1_evaluations_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricExplanationList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Metric Explanations",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
     "/v1/evaluations/{evaluation_id}": {
       "get": {
         "operationId": "get_evaluation_v1_evaluations__evaluation_id__get",
@@ -1545,6 +1669,51 @@
           }
         },
         "summary": "Get Evaluation",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/v1/evaluations/{evaluation_id}/artifact": {
+      "get": {
+        "description": "The stored artifact: per-clip references, transcripts and alignments.\n\nThe record is the index — numbers, comparable across runs; the words\nlive in the artifact, exactly as transcripts live in object storage\nrather than in the jobs table. This is how the console renders the diff\nbehind a WER, and it answers honestly when there is nothing to serve: a\nrun stored without a store says so instead of inventing a document.",
+        "operationId": "get_evaluation_artifact_v1_evaluations__evaluation_id__artifact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evaluation_id",
+            "required": true,
+            "schema": {
+              "title": "Evaluation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Evaluation Artifact V1 Evaluations  Evaluation Id  Artifact Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evaluation Artifact",
         "tags": [
           "evaluations"
         ]

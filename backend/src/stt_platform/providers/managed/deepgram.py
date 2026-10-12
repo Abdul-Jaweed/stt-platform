@@ -491,7 +491,9 @@ class DeepgramStreamSession:
 
     async def send(self, pcm16: bytes) -> None:
         if self._socket is None or self._closed:
-            raise ProviderError("deepgram stream is not open")
+            raise ProviderError(
+                "STREAM_NOT_OPEN", "deepgram stream is not open", retryable=False
+            )
         await self._socket.send(pcm16)
 
     async def events(self) -> AsyncIterator[StreamEvent]:

@@ -273,7 +273,12 @@ class _FakeVendorStream:
         assert self.audio, "the vendor stream received no audio"
         yield StreamEvent(
             "partial",
-            {"text": "hel", "segments": [], "window": {"start_s": 0.0, "end_s": 0.2}, "is_final": False},
+            {
+                "text": "hel",
+                "segments": [],
+                "window": {"start_s": 0.0, "end_s": 0.2},
+                "is_final": False,
+            },
         )
         yield StreamEvent(
             "final",

@@ -13,6 +13,7 @@ import pytest
 import websockets
 
 from stt_platform.core.config import Settings
+from stt_platform.domain.errors import ProviderError
 from stt_platform.providers.managed.deepgram import (
     DeepgramProvider,
     stream_event_from_message,
@@ -30,7 +31,8 @@ from stt_platform.services.streaming import (
 
 def test_only_a_provider_that_can_open_a_stream_is_one():
     assert as_managed_stream_provider(object()) is None
-    assert as_managed_stream_provider(DeepgramProvider(Settings(_env_file=None, deepgram_api_key="k"))) is not None
+    provider = DeepgramProvider(Settings(_env_file=None, deepgram_api_key="k"))
+    assert as_managed_stream_provider(provider) is not None
 
 
 def test_the_socket_url_carries_the_format_the_decoder_produces():
@@ -80,8 +82,20 @@ def test_a_final_result_is_a_final_with_word_timings():
                     {
                         "transcript": "hello world",
                         "words": [
-                            {"word": "hello", "punctuated_word": "Hello", "start": 0.1, "end": 0.4, "confidence": 0.98},
-                            {"word": "world", "punctuated_word": "world.", "start": 0.4, "end": 0.9, "confidence": 0.91},
+                            {
+                                "word": "hello",
+                                "punctuated_word": "Hello",
+                                "start": 0.1,
+                                "end": 0.4,
+                                "confidence": 0.98,
+                            },
+                            {
+                                "word": "world",
+                                "punctuated_word": "world.",
+                                "start": 0.4,
+                                "end": 0.9,
+                                "confidence": 0.91,
+                            },
                         ],
                     }
                 ]
@@ -106,7 +120,8 @@ def test_a_degenerate_word_is_dropped_never_clamped():
                     {
                         "transcript": "a b",
                         "words": [
-                            {"word": "a", "start": 0.3, "end": 0.3, "confidence": 0.5},  # zero length
+                            # zero length
+                            {"word": "a", "start": 0.3, "end": 0.3, "confidence": 0.5},
                             {"word": "b", "start": 0.4, "end": 0.8, "confidence": 0.5},
                         ],
                     }
@@ -206,5 +221,8 @@ def test_sending_after_close_is_an_error_not_a_silent_no_op():
         return session
 
     session = asyncio.run(run())
-    with pytest.raises(Exception):
+    with pytest.raises(ProviderError) as excinfo:
         asyncio.run(session.send(b"x"))
+
+    assert excinfo.value.code == "STREAM_NOT_OPEN"
+    assert excinfo.value.retryable is False

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import Request
+from starlette.requests import HTTPConnection
 
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import Unauthorized
@@ -49,58 +49,58 @@ def resolve_scope(presented: str | None, keys: dict[str, str]) -> str:
     raise Unauthorized("a valid X-API-Key header is required")
 
 
-def presented_session_token(request: Request) -> str | None:
+def presented_session_token(connection: HTTPConnection) -> str | None:
     """The session token this request carries: cookie first, then ``Bearer``.
 
     Browsers use the cookie (script cannot read it); CLI clients and tests use
     the header. Either way the token is the same signed value.
     """
-    settings: Settings = request.app.state.settings
+    settings: Settings = connection.app.state.settings
     name = getattr(settings, "session_cookie_name", SESSION_COOKIE) or SESSION_COOKIE
-    cookie = request.cookies.get(name)
+    cookie = connection.cookies.get(name)
     if cookie:
         return cookie
-    header = request.headers.get("authorization") or ""
+    header = connection.headers.get("authorization") or ""
     scheme, _, token = header.partition(" ")
     if scheme.lower() == "bearer" and token.strip():
         return token.strip()
     return None
 
 
-def resolve_session(request: Request) -> SessionClaims | None:
+def resolve_session(connection: HTTPConnection) -> SessionClaims | None:
     """The verified session behind this request, or ``None``.
 
     Deliberately does not raise: an absent session is normal (machine clients
     present keys), and an *invalid* one is judged by the caller — with auth
     enabled it ends as a 401, with auth off it degrades to the local scope.
     """
-    tokens = getattr(request.app.state, "sessions", None)
+    tokens = getattr(connection.app.state, "sessions", None)
     if tokens is None:
         return None
-    token = presented_session_token(request)
+    token = presented_session_token(connection)
     if not token:
         return None
     try:
         claims = tokens.verify(token)
     except Unauthorized:
         return None
-    request.state.session_claims = claims
+    connection.state.session_claims = claims
     return claims
 
 
-def get_scope(request: Request) -> str:
+def get_scope(connection: HTTPConnection) -> str:
     """FastAPI dependency: the authenticated tenant for this request.
 
     Three ways in, one rule out — the *server* decides the scope: a signed
     session (UI), a presented API key (machines), or ``local`` when auth is
     off entirely.
     """
-    settings: Settings = request.app.state.settings
-    claims = resolve_session(request)
+    settings: Settings = connection.app.state.settings
+    claims = resolve_session(connection)
     if claims is not None:
         return claims.tenant
     if not settings.auth_enabled:
         return LOCAL_SCOPE
     return resolve_scope(
-        request.headers.get("x-api-key"), parse_api_keys(settings.api_keys)
+        connection.headers.get("x-api-key"), parse_api_keys(settings.api_keys)
     )

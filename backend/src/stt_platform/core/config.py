@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     #: on every tick, so it is capped: past this, the client stops asking and
     #: the full job takes over.
     max_live_preview_duration_s: float = 120.0
+    #: True streaming (Phase 8): a WebSocket session decodes the audio once and
+    #: emits each utterance as it closes. The cap replaces the preview's because
+    #: a stream is decoded once, not re-transcribed on every tick.
+    stream_max_duration_s: float = 300.0
+    #: A session that hears nothing for this long ends itself (reason "idle").
+    stream_idle_timeout_s: float = 30.0
+    #: Concurrent streams per API process -- a stream holds a GPU slot for its
+    #: whole life, so the bound is small and the refusal explicit (STREAM_BUSY).
+    stream_max_sessions: int = 2
+    #: One WebSocket frame may not exceed this many bytes of audio.
+    stream_max_frame_bytes: int = 1_048_576
     sync_duration_tolerance_s: float = 0.5
 
     s3_endpoint: str = "http://127.0.0.1:29000"

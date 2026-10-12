@@ -10,7 +10,13 @@ from fastapi.responses import Response
 from stt_platform.api.errors import register_exception_handlers
 from stt_platform.api.ratelimit import SlidingWindowLimiter
 from stt_platform.api.v1 import auth as auth_routes
-from stt_platform.api.v1 import evaluations, health, providers, transcriptions
+from stt_platform.api.v1 import (
+    evaluations,
+    health,
+    providers,
+    streaming,
+    transcriptions,
+)
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.observability import metrics, runtime, tracing
 from stt_platform.observability.instrumentation import instrument_app
@@ -25,6 +31,7 @@ from stt_platform.persistence.db import make_engine, make_session_factory
 from stt_platform.providers.defaults import build_default_registry
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.services.auth import SessionTokens, hash_password
+from stt_platform.services.streaming import StreamLimiter
 from stt_platform.storage.s3 import S3ObjectStore
 
 
@@ -58,6 +65,9 @@ def create_app(
     app.state.login_limiter = SlidingWindowLimiter(
         settings.login_max_attempts_per_minute
     )
+    # Streaming holds a GPU slot for the life of a session, so it is bounded
+    # separately from the request rate: a busy server refuses, it does not queue.
+    app.state.stream_limiter = StreamLimiter(settings.stream_max_sessions)
     # Session signing: a configured secret keeps sessions across restarts
     # and across replicas; without one a per-process secret is generated
     # and every restart signs everyone out (refused outright in production).
@@ -80,6 +90,7 @@ def create_app(
     register_exception_handlers(app)
     app.include_router(auth_routes.router, prefix="/v1")
     app.include_router(transcriptions.router, prefix="/v1")
+    app.include_router(streaming.router, prefix="/v1")
     app.include_router(providers.router, prefix="/v1")
     app.include_router(evaluations.router, prefix="/v1")
     app.include_router(health.router, prefix="/v1")

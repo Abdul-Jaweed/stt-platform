@@ -54,7 +54,7 @@ GPU passthrough, backup, troubleshooting — is
 | [UI](ui.md) | the React console: pages, the browser recorder, design rules |
 | [Providers](providers.md) | the capability matrix, provider configuration, fidelity rules |
 | [Live provider verification](live-provider-verification.md) | live vendor runs: numbers, defects, evidence |
-| [Architecture](architecture.md) | system boundaries, data model, ADR log, ports — plus two interactive diagrams: [platform architecture](architecture/stt-platform-architecture.html) · [job lifecycle](architecture/transcription-job-lifecycle.html) |
+| [Architecture](architecture.md) | system boundaries, data model, ADR log, ports — plus a [standalone diagrams section](architecture/index.html) with two interactive diagrams: [platform architecture](architecture/stt-platform-architecture.html) · [job lifecycle](architecture/transcription-job-lifecycle.html) |
 
 The phase-by-phase build history (evidence and limitations per phase) is in
 the sidebar under **Phase reports**.

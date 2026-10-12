@@ -11,9 +11,13 @@ docs_dir: docs
 # other. Flat URLs keep every page reachable.
 use_directory_urls: false
 
-# Internal build plans are not part of the published site.
+# Internal build plans are not part of the published site. The architecture
+# folder's README stays in git as the GitHub-browsing index for the folder,
+# but the site serves a hand-written static index.html there instead (see
+# docs/architecture/index.html), so the two must not both build.
 exclude_docs: |
   superpowers/**
+  architecture/README.md
 
 theme:
   name: material
@@ -51,11 +55,6 @@ nav:
   - UI: ui.md
   - Providers: providers.md
   - Live provider verification: live-provider-verification.md
-  - Architecture:
-      - Architecture overview: architecture.md
-      - Architecture diagrams: architecture/README.md
-      - "STT platform architecture — diagram (HTML)": architecture/stt-platform-architecture.html
-      - "Transcription job lifecycle — diagram (HTML)": architecture/transcription-job-lifecycle.html
   - Phase reports:
       - "Phase 0 — Repository inspection and architecture": phase-0-report.md
       - "Phase 1 — Headless backend and local STT baseline": phase-1-report.md

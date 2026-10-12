@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Evidance — Architecture</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --ink: #1f2430; --muted: #5c6470;
+    --line: #e3e6eb; --accent: #4f46e5; --accent-ink: #ffffff;
+    --warn-bg: #fff7ed; --warn-line: #fdba74; --warn-ink: #9a3412;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --card: #1c1f25; --ink: #e8eaee; --muted: #a2a9b4;
+      --line: #2a2f37; --accent: #a5b4fc; --accent-ink: #14161a;
+      --warn-bg: #2a1d12; --warn-line: #7c4a1e; --warn-ink: #fdba74;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .brand { font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 2rem; line-height: 1.2; margin: .35rem 0 .5rem; }
+  .lede { color: var(--muted); max-width: 70ch; margin: 0 0 2rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.1rem 1.2rem; display: flex; flex-direction: column; gap: .5rem;
+  }
+  .card h2 { font-size: 1.05rem; margin: 0; }
+  .card p { margin: 0; color: var(--muted); font-size: .92rem; }
+  .card .links { margin-top: auto; padding-top: .60rem; display: flex; gap: .9rem; flex-wrap: wrap; font-size: .92rem; }
+  .facts { color: var(--muted); font-size: .82rem; letter-spacing: .01em; }
+  .pill {
+    display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+    border: 1px solid var(--line); border-radius: 999px; padding: .1rem .55rem; color: var(--muted);
+  }
+  .note {
+    border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-ink);
+    border-radius: 10px; padding: .9rem 1.1rem; font-size: .92rem; margin-top: 1rem;
+  }
+  .note a { color: inherit; }
+  section h2.group { font-size: 1.15rem; margin: 2.2rem 0 .6rem; }
+  footer {
+    margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: .85rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div>
+      <div class="brand">Evidance</div>
+      <h1>Architecture</h1>
+      <p class="lede">
+        The system's shape, drawn from the code at a pinned revision and checked by
+        machine before publication. Each diagram below is a self-contained page —
+        open it directly; nothing here depends on the documentation build.
+      </p>
+    </div>
+    <p><a href="../">&larr; Documentation home</a></p>
+  </header>
+
+  <div class="grid">
+    <article class="card">
+      <span class="pill">Delivered</span>
+      <h2>STT platform architecture</h2>
+      <p>
+        The full deployment: clients, the API process, PostgreSQL, object storage,
+        the Temporal boundary, the worker and the provider adapters — every
+        component and every edge, with the reliability contracts annotated.
+      </p>
+      <p class="facts">26 components · all four archify gates passed (0 diagnostics) · self-contained HTML</p>
+      <div class="links">
+        <a href="stt-platform-architecture.html">Open the diagram</a>
+        <a href="stt-platform-architecture.architecture.json" download>Typed source (JSON)</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="pill">Delivered</span>
+      <h2>Transcription job lifecycle</h2>
+      <p>
+        One job from upload to terminal state: the synchronous road, the durable
+        road through the outbox, every <code>RETRY_WAIT</code>, and what
+        <code>FAILED</code> and <code>CANCELLED</code> actually mean.
+      </p>
+      <p class="facts">States, retries and cancellation · all four archify gates passed · self-contained HTML</p>
+      <div class="links">
+        <a href="transcription-job-lifecycle.html">Open the diagram</a>
+        <a href="transcription-job-lifecycle.lifecycle.json" download>Typed source (JSON)</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="pill">Text</span>
+      <h2>Architecture overview</h2>
+      <p>
+        The written companion: system boundaries, data model, ports and the ADR
+        log, as it appears in the documentation.
+      </p>
+      <div class="links">
+        <a href="../architecture.html">Read the overview</a>
+      </div>
+    </article>
+  </div>
+
+  <section>
+    <h2 class="group">Gates and receipts</h2>
+    <p class="lede" style="margin-bottom:.6rem">
+      Each diagram runs through the same sequence — validate (citations checked
+      against the pinned revision), deliver, strict layout check, real-browser
+      check — and only ships at zero diagnostics. The receipts are kept next to
+      the artifacts:
+      <a href="stt-platform-architecture.finalize-summary.json">platform architecture</a> ·
+      <a href="transcription-job-lifecycle.finalize-summary.json">job lifecycle</a>.
+    </p>
+
+    <div class="note">
+      <strong>Not delivered, and not implied:</strong> a third diagram —
+      <em>failure-recovery workflow</em> — was authored but not published. Its
+      layout gate cannot be satisfied within the repair budget: the retry loop's
+      return edge crosses the forward edges in every topology tried. The
+      retry/cancellation contract it documents is instead annotated on the two
+      diagrams above. The authored source is kept as a draft
+      (<a href="failure-recovery-workflow.workflow.json" download>workflow.json</a>)
+      rather than presented as a finished artifact.
+    </div>
+  </section>
+
+  <footer>
+    <span>This section is served by the same GitHub Pages site as the documentation, but is deliberately not part of the documentation navigation.</span>
+    <span><a href="https://github.com/Abdul-Jaweed/stt-platform/tree/main/docs/architecture">Sources on GitHub</a></span>
+  </footer>
+</main>
+</body>
+</html>

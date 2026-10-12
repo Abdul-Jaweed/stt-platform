@@ -49,6 +49,7 @@ numbers they can defend.
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [Architecture](#architecture)
+- [Design Decisions](#design-decisions)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -223,6 +224,50 @@ data model, ADR log), the [architecture diagrams section](https://abdul-jaweed.g
 (published with their gate receipts) and
 [docs/pipeline-and-reliability.md](docs/pipeline-and-reliability.md)
 (failure modes, capacity, retention).
+
+## Design Decisions
+
+The choices that shaped everything else, each one still visible in the code:
+
+- **The contract came before the engines.** The canonical transcript schema
+  (`schemas/transcript.py`) and the provider contract
+  (`providers/base.py` — `transcribe` for sync engines, `submit` / `poll` /
+  `cancel` for async ones) were written first, so swapping in a new engine
+  never touches the API, the jobs, or the clients.
+- **Local-first, and local audio never leaves silently.** The local engine is
+  always available and is the default; managed providers register only while
+  their key is configured, and only serve a request that explicitly selects
+  them. Live preview and realtime streaming are local-only.
+- **Capabilities are discovered, never assumed.** `GET /v1/providers` serves
+  each engine's real features and declared limits, with sources; a capability
+  reads `documented` until one of our own live runs earns `verified`.
+- **Nothing is fabricated.** Timestamps come from the engine that produced
+  them — a provider that cannot report word timing does not claim it, a
+  zero-length word is dropped (never clamped), and a degenerate segment fails
+  the job loudly instead of silently losing transcript text.
+- **Short jobs are synchronous, long jobs are durable.** Under
+  `STT_MAX_SYNC_DURATION_S` a request is answered inline; past it — and for
+  every async provider — the work becomes a Temporal workflow fed by a
+  transactional outbox: it survives restarts, retries with backoff, and can
+  be cancelled.
+- **Every timestamp is on the original timeline.** Nothing downstream knows
+  how the audio was processed: the local long-audio chunker shifts each slice
+  back with `domain/timeline.py::shift_segments` instead of re-deriving
+  anything.
+- **Storage keeps audio and truth apart.** Audio lives in S3-compatible
+  storage under opaque keys with presigned access; job records, transitions
+  and transcripts live in PostgreSQL. Deletion removes objects first, then
+  rows, and retention is a configured window, not an accident.
+- **Tenants come from credentials, never from requests.** The tenant that
+  owns a job is resolved server-side from the API key or session;
+  client-supplied tenant fields are ignored, and cross-tenant reads look like
+  they do not exist.
+- **Observability is on by default and allowed to fail quietly.** Tracing and
+  metrics never break a transcription; the Grafana dashboard and Prometheus
+  alerts ship as operator-owned artifacts (this repo deploys neither).
+- **Vendor limits are enforced before the vendor.** An over-limit file is
+  refused up front, naming the provider, using the vendor's documented
+  numbers — cheaper and clearer than failing in the cloud.
 
 ## Tech Stack
 

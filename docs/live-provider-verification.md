@@ -85,8 +85,34 @@ pinned by `tests/unit/test_capability_provenance.py`:
 | Provider | verified | still documented |
 |---|---|---|
 | Deepgram | word + segment timestamps, diarization, confidence, language detection | — |
-| ElevenLabs | word timestamps, language detection | diarization (requested, not yet exercised live) |
+| ElevenLabs | word timestamps, language detection, diarization (see the 2026-10-12 run below) | — |
 | Sarvam | async processing, segment timestamps, diarization, language detection | — |
+
+## 2026-10-12 — ElevenLabs re-verified after wiring the deployment
+
+The console deployment had no `STT_ELEVENLABS_API_KEY`, so the provider was
+absent from `/v1/providers` (a managed provider registers only while its key is
+present). The key `backend/.env` already held was added to the deployment
+`.env` — the same value in both files, checked by hash — and one call was spent
+to confirm the wired credential:
+
+| Call | Endpoint | Outcome |
+|---|---|---|
+| ElevenLabs #2 | `POST /v1/speech-to-text` | **verification run** (one 10 s call, no retries) |
+
+That is **six** paid operations in total across both events. The run returned
+27 words, one derived segment, language `eng`, 2.15 s, and — because
+`diarize=true` is now asserted rather than assumed — speaker labels
+(`speakers: [0]`). ElevenLabs diarization therefore moved from `documented` to
+`verified`, asserted by `test_elevenlabs_live_word_timestamps` and pinned in
+`tests/unit/test_capability_provenance.py`.
+
+**Key scoping (why only a transcription can validate it):** the key is
+restricted to speech-to-text. Account lookups answer
+`401 missing_permissions` — `user_read` for `GET /v1/user`, `models_read` for
+`GET /v1/models`. That is the right shape for this project's "STT models only"
+rule, and it means there is no free endpoint that proves the credential: the
+only honest check is one real transcription.
 
 ## How to re-run (costs money)
 

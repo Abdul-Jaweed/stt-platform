@@ -126,11 +126,11 @@ def test_capabilities_never_claim_confidence():
     assert caps.confidence_scores is False
     assert caps.async_processing is False
     # Word timings + language code came back from the 2026-10-11 live run;
-    # diarization is now requested (diarize=true) but has not been exercised
-    # live yet, so it stays "documented".
+    # diarization moved to "verified" on 2026-10-12: the live run sent
+    # diarize=true and the derived segments carried speaker labels.
     assert caps.capability_sources["word_timestamps"] == "verified"
     assert caps.capability_sources["language_detection"] == "verified"
-    assert caps.capability_sources["diarization"] == "documented"
+    assert caps.capability_sources["diarization"] == "verified"
 
 
 def test_health_without_key_is_unavailable():

@@ -83,12 +83,12 @@ class ElevenLabsProvider:
             capability_sources={
                 # Live-verified 2026-10-11 (results/live_providers/result.json):
                 # 27 word timings with end > start, no per-word confidence
-                # (stays None), language code "eng".
+                # (stays None), language code "eng". Diarization is verified by
+                # the 2026-10-12 run: ``diarize=true`` returned speaker labels,
+                # so the derived segments carry one.
                 "word_timestamps": "verified",
                 "language_detection": "verified",
-                # ``diarize=true`` is now sent, but no live run has exercised
-                # it yet: the source stays "documented" until one does.
-                "diarization": "documented",
+                "diarization": "verified",
             },
         )
 

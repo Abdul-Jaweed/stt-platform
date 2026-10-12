@@ -4,7 +4,8 @@ Every entry in a provider's ``capability_sources`` is either ``documented``
 (vendor docs only) or ``verified`` (our own live run). The ``verified``
 claims below are backed by the on-disk, git-ignored evidence of
 2026-10-11 in ``results/live_providers/result.json`` (Deepgram 1 call,
-ElevenLabs 1 call, Sarvam 1 batch job); flipping one back or forward is a
+ElevenLabs 1 call, Sarvam 1 batch job) plus the 2026-10-12 ElevenLabs call
+that exercised ``diarize=true``; flipping one back or forward is a
 deliberate edit to this test, never a side effect.
 """
 from stt_platform.core.config import Settings
@@ -38,7 +39,7 @@ def test_elevenlabs_provenance():
     assert _sources(provider) == {
         "word_timestamps": "verified",
         "language_detection": "verified",
-        "diarization": "documented",
+        "diarization": "verified",
     }
 
 

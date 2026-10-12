@@ -138,7 +138,7 @@ def test_deepgram_live_word_timestamps():
 
 def test_elevenlabs_live_word_timestamps():
     """Proves: word timestamps, derived segments, absent word confidence
-    (never fabricated), language code."""
+    (never fabricated), diarized speakers, language code."""
     settings = _settings("elevenlabs_api_key")
     provider = ElevenLabsProvider(settings=settings)
 
@@ -155,6 +155,9 @@ def test_elevenlabs_live_word_timestamps():
     assert transcript.segments, "no segments derived from word runs"
     assert all(w.confidence is None for w in words), (
         "Scribe reports no per-word confidence: it must stay None"
+    )
+    assert any(s.speaker is not None for s in transcript.segments), (
+        "no speaker labels — diarization was requested (diarize=true)"
     )
     assert transcript.language, "no language code"
     assert transcript.audio_duration_s > 0

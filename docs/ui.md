@@ -92,19 +92,28 @@ show.
 
 ## Live transcription
 
-While the microphone is open, `useLivePreview` sends the audio captured so far
-to `POST /v1/transcriptions/preview` and shows the text that comes back — the
-whole take is re-transcribed each tick, so the text grows instead of showing
-seams.
+While the microphone is open, the panel shows what the local model is hearing.
+`useLiveTranscript` uses the **WebSocket stream**
+(`WS /v1/transcriptions/stream`, see `docs/streaming.md`) and falls back to the
+older chunked preview (`POST /v1/transcriptions/preview`) only when a socket
+cannot be opened at all — never on top of text the reader can already see,
+because that would silently swap the answer instead of improving it.
 
+- **Two weights, on purpose.** Text the server has closed (a `final`) is shown
+  normally; the utterance still open (a `partial`) is lighter, because it can
+  still change. A final never does.
 - **Local model only.** The backend refuses a managed provider with
-  `LIVE_PREVIEW_LOCAL_ONLY`; the panel says so in words.
-- **Nothing is persisted.** No job, no object, no trail — see `docs/api.md`.
-- **A preview failure never touches the recording.** The panel reports it and
-  the take carries on; the submit path is unchanged.
-- **Requests never stack.** One preview is in flight at a time, in-flight work
-  is aborted when recording stops, and the asking stops at
-  `STT_MAX_LIVE_PREVIEW_DURATION_S` (the panel says the full job takes over).
+  `STREAM_LOCAL_ONLY` (and `LIVE_PREVIEW_LOCAL_ONLY` on the fallback); the panel
+  says so in words.
+- **Nothing is persisted.** No job, no object, no trail — the recording you
+  stop is what gets transcribed durably, through the same upload path as a
+  chosen file.
+- **A live failure never touches the recording.** The panel reports it and the
+  take carries on; the submit path is unchanged.
+- **Sends never stack or repeat.** Each recorder chunk is sent exactly once, in
+  order (chunk boundaries are byte-exact, so a re-send would corrupt the
+  stream); the socket is bounded by the server's cap, which answers `capped`
+  and `done` rather than growing forever.
 
 ## Transcript
 

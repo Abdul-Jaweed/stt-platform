@@ -158,7 +158,11 @@ def test_capabilities_are_local_and_document_verification(tmp_path):
     assert caps.word_timestamps is True
     assert caps.segment_timestamps is True
     assert caps.async_processing is False
-    assert caps.streaming is False
+    assert caps.streaming is True
+    # Claimed only because the flag has been proven on the live stack:
+    # scripts/e2e_phase8.py streamed real speech through the WebSocket and the
+    # resulting text agreed with the batch transcript of the same audio.
+    assert caps.capability_sources["streaming"] == "verified"
     assert caps.diarization is False
     assert "en" in caps.languages and "hi" in caps.languages
     assert len(caps.languages) >= 95

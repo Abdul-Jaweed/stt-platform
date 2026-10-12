@@ -25,6 +25,12 @@ FORWARDED = [
     "STT_SARVAM_API_KEY",
     "STT_AUTH_ENABLED",
     "STT_API_KEYS",
+    # The live stream's own knobs: on by default, so a deployment that wants
+    # different limits must be able to say so from .env.
+    "STT_STREAM_MAX_DURATION_S",
+    "STT_STREAM_IDLE_TIMEOUT_S",
+    "STT_STREAM_MAX_SESSIONS",
+    "STT_STREAM_MAX_FRAME_BYTES",
 ]
 
 

@@ -38,6 +38,11 @@ x-backend-env: &backend-env
   STT_MAX_SYNC_DURATION_S: ${STT_MAX_SYNC_DURATION_S:-180}
   STT_GPU_CONCURRENCY: ${STT_GPU_CONCURRENCY:-1}
   STT_MANAGED_CONCURRENCY: ${STT_MANAGED_CONCURRENCY:-4}
+  # The live stream runs inside the API process, so these bound it there.
+  STT_STREAM_MAX_DURATION_S: ${STT_STREAM_MAX_DURATION_S:-300}
+  STT_STREAM_IDLE_TIMEOUT_S: ${STT_STREAM_IDLE_TIMEOUT_S:-30}
+  STT_STREAM_MAX_SESSIONS: ${STT_STREAM_MAX_SESSIONS:-2}
+  STT_STREAM_MAX_FRAME_BYTES: ${STT_STREAM_MAX_FRAME_BYTES:-1048576}
   # Managed providers (free tier). A provider registers only while its key is
   # present, and nothing is sent to one unless a request explicitly selects it.
   # Empty means "absent": the local model stays the default.

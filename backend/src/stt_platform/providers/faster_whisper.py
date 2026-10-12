@@ -66,7 +66,7 @@ class FasterWhisperProvider:
             segment_timestamps=True,
             word_timestamps=True,
             diarization=False,
-            streaming=False,
+            streaming=True,
             batch=True,
             async_processing=False,
             confidence_scores=True,
@@ -78,6 +78,10 @@ class FasterWhisperProvider:
                 "segment_timestamps": "verified",
                 "word_timestamps": "verified",
                 "confidence_scores": "verified",
+                # verified end-to-end by scripts/e2e_phase8.py: the streamed
+                # take and the same audio as a job agreed token for token
+                # (WER 0.179 on the 10 s sample, live stack, large-v3-turbo)
+                "streaming": "verified",
             },
         )
 

@@ -1,6 +1,6 @@
 # Phase 8 — Streaming transcription (local-first)
 
-Status: **in progress** (T1–T8)
+Status: **complete** (T1–T8; see `docs/phase-8-report.md` for what ran)
 
 Spec: `IDEA.md` lists `streaming` among the capabilities an adapter must
 *represent* (never fabricate), and voice agents among the target consumers.
@@ -112,3 +112,40 @@ Server → client (JSON text frames):
 - Diarization, translation, or any non-STT model.
 - Cloud streaming sessions (the flag and the refusal ship; the adapters do
   not, until a vendor stream is verified live like everything else).
+
+## Delivered — and where it differs from this plan
+
+All eight tasks landed; the report (`docs/phase-8-report.md`) carries the
+evidence. The differences worth recording, because a plan that quietly
+disagrees with the code is worse than no plan:
+
+- **The start frame's field is `input_format`** (`"container"` | `"pcm16"`), not
+  `encoding`, and the rate is fixed at 16 kHz rather than client-declared: the
+  decoder always resamples, so a client-stated rate would have been a claim the
+  server ignores.
+- **`done` carries a `reason`** (`stop` | `capped` | `idle`). The plan only had
+  the cap as an event; an idle ending and a client stop are useful to tell
+  apart, and the console shows the difference.
+- **Two more error codes than listed**: `STREAM_MALFORMED_TRANSCRIPT` (a
+  provider returned something the canonical schema cannot represent — reported,
+  never silently dropped, which is the batch path's rule too) and
+  `STREAM_INTERNAL`. `VALIDATION_ERROR` did not appear: a bad start frame is
+  `STREAM_BAD_REQUEST`, since there is no request body to validate.
+- **`STT_STREAM_MAX_SESSIONS` defaults to 2**, not to the GPU concurrency, and
+  `STT_STREAM_MAX_FRAME_BYTES` joined the list. A stream holds a GPU slot for
+  its whole life, so the bound wants to be lower than the batch concurrency,
+  and one unbounded frame is an easy way to make the server buffer for you.
+- **"One decode at a time" needed no in-flight flag.** The session is
+  synchronous and the cadence gate (`partial_interval_s`) decides when a
+  partial is due, so stacking is not possible rather than prevented. The rule
+  the plan was protecting is enforced by construction.
+- **The fallback to the chunked preview lives in `useLiveTranscript`**, not in
+  `useLiveStream`. The transport reports `unsupported`; the policy decides what
+  that means. It also decides the thing the plan did not specify: the fallback
+  runs **only when nothing ever arrived from the server**, never on top of text
+  already on screen.
+- **`streaming/vad.py` is both windowing and VAD**; a separate
+  `streaming/window.py` would have held one dataclass.
+- **Finals carry word timings** (`word_timestamps=True` on the window decode),
+  so the non-goal "word-level partials" still holds while finals are as rich as
+  the batch path's segments.

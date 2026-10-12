@@ -46,11 +46,14 @@ from stt_platform.services.streaming import (
     STREAM_BAD_REQUEST,
     STREAM_BUSY,
     STREAM_DECODE_FAILED,
+    STREAM_INFERENCE_FAILED,
     STREAM_INTERNAL,
-    STREAM_LOCAL_ONLY,
     STREAM_SAMPLE_RATE,
+    STREAM_UNVERIFIED,
+    ManagedStreamConfig,
     ProviderWindowTranscriber,
     StreamLimiter,
+    as_managed_stream_provider,
     as_window_provider,
     stream_config,
 )
@@ -64,6 +67,7 @@ router = APIRouter(prefix="/transcriptions", tags=["streaming"])
 #: How long the worker may take to flush a stopped stream before we give up.
 _DRAIN_TIMEOUT_S = 30.0
 #: The worker's tick: a partial, a cap or an idle end is noticed this fast.
+_MANAGED_PUMP_INTERVAL_S = 0.05  # how often decoded PCM is handed to a vendor
 _POLL_INTERVAL_S = 0.05
 _INPUT_FORMATS = {"container", "pcm16"}
 _END = object()  # queue sentinel: the worker will never produce more frames
@@ -125,15 +129,31 @@ async def _serve(websocket: WebSocket, *, settings: Settings, scope: str) -> Non
     except ProviderNotFound as exc:
         await _fail(websocket, STREAM_BAD_REQUEST, exc.message)
         return
+    managed_stream = as_managed_stream_provider(provider)
     if not provider.is_local:
-        await _fail(
+        # A managed provider may serve a stream only when it both implements
+        # the stream and has a live run behind the capability flag: an
+        # unverified adapter would be a claim, not a service.
+        declared = provider.capabilities().streaming
+        if managed_stream is None or not declared:
+            await _fail(
+                websocket,
+                STREAM_UNVERIFIED,
+                f"provider {provider.id!r} does not offer streaming"
+                + (" yet (adapter present, live verification pending)" if managed_stream else "")
+                + " -- send the recording to POST /v1/transcriptions instead",
+            )
+            return
+        await _serve_managed(
             websocket,
-            STREAM_LOCAL_ONLY,
-            f"streaming is offered by local providers only; {provider.id!r} is a "
-            "managed provider -- send the recording to POST /v1/transcriptions "
-            "and let the job route it",
+            provider=provider,
+            stream_provider=managed_stream,
+            settings=settings,
+            start=start,
+            first_chunk=first_chunk,
         )
         return
+
     window_provider = as_window_provider(provider)
     if window_provider is None:
         await _fail(
@@ -380,3 +400,168 @@ async def _fail(
         )
     with contextlib.suppress(Exception):
         await websocket.close(code=close_code)
+
+
+async def _serve_managed(
+    websocket: WebSocket,
+    *,
+    provider: Any,
+    stream_provider: Any,
+    settings: Settings,
+    start: dict[str, Any],
+    first_chunk: bytes | None,
+) -> None:
+    """A managed stream: the vendor's socket behind the platform's contract.
+
+    The client's audio still goes through one ffmpeg per session (so the
+    vendor always receives 16 kHz mono PCM16, exactly like the local path),
+    and the vendor's events are relayed unchanged — same ``partial`` /
+    ``final`` / ``error`` shapes, same wire contract. The duration cap is
+    the platform's, not the vendor's.
+    """
+    input_format = str(start.get("input_format") or "container").lower()
+    if input_format not in _INPUT_FORMATS:
+        await _fail(
+            websocket,
+            STREAM_BAD_REQUEST,
+            f"input_format must be one of {sorted(_INPUT_FORMATS)}",
+        )
+        return
+    language = start.get("language") or None
+    if language is not None and not isinstance(language, str):
+        await _fail(websocket, STREAM_BAD_REQUEST, "language must be a string or null")
+        return
+    if first_chunk is not None and len(first_chunk) > settings.stream_max_frame_bytes:
+        await _fail(websocket, STREAM_BAD_REQUEST, _too_big(len(first_chunk), settings))
+        return
+
+    config = stream_config(settings, language=language)
+    session_id = uuid.uuid4().hex
+    decoder = FfmpegPcmDecoder(raw_pcm16=(input_format == "pcm16"))
+    decoder.start()
+    log.info(
+        "managed stream session started id=%s provider=%s format=%s",
+        session_id[:8],
+        provider.id,
+        input_format,
+    )
+
+    started = time.monotonic()
+    try:
+        async with stream_provider.open_stream(
+            ManagedStreamConfig(
+                language=language,
+                max_duration_s=config.max_duration_s,
+            )
+        ) as vendor:
+            await websocket.send_json(
+                {
+                    "type": "ready",
+                    "session_id": session_id,
+                    "sample_rate": STREAM_SAMPLE_RATE,
+                    "input_format": input_format,
+                    "provider": provider.id,
+                    "max_duration_s": config.max_duration_s,
+                    "partial_interval_s": config.partial_interval_s,
+                }
+            )
+            done = asyncio.Event()
+            stop = asyncio.Event()
+            nonlocal_cap = [False]  # set when the cap's done frame is sent
+
+            async def pump() -> None:
+                """Decoded PCM -> vendor, until stopped or capped."""
+                while not done.is_set():
+                    for block in decoder.drain():
+                        await vendor.send(block.tobytes())
+                    if time.monotonic() - started >= config.max_duration_s:
+                        nonlocal_cap[0] = True
+                        await websocket.send_json(
+                            {"type": "done", "reason": "duration_cap"}
+                        )
+                        done.set()
+                        return
+                    if stop.is_set():
+                        return
+                    await asyncio.sleep(_MANAGED_PUMP_INTERVAL_S)
+
+            async def relay() -> None:
+                async for event in vendor.events():
+                    await websocket.send_json(event.to_wire())
+                    if event.type == "error":
+                        done.set()
+                        return
+                # The vendor stopped talking. Anything still in the decoder
+                # has nowhere to go -- say so rather than pretend it was
+                # transcribed.
+                leftover = sum(block.size for block in decoder.drain())
+                if leftover:
+                    log.warning(
+                        "vendor stream closed with %d samples still decoded", leftover
+                    )
+                done.set()
+
+            async def receive() -> None:
+                while not done.is_set():
+                    incoming = await websocket.receive()
+                    if incoming.get("type") == "websocket.disconnect":
+                        stop.set()
+                        done.set()
+                        return
+                    data = incoming.get("bytes")
+                    if data:
+                        if len(data) > settings.stream_max_frame_bytes:
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "code": STREAM_BAD_REQUEST,
+                                    "message": _too_big(data, settings),
+                                    "fatal": True,
+                                }
+                            )
+                            stop.set()
+                            done.set()
+                            return
+                        await asyncio.to_thread(decoder.write, data)
+                        continue
+                    text = incoming.get("text")
+                    if text:
+                        try:
+                            payload = json.loads(text)
+                        except ValueError:
+                            continue
+                        if payload.get("type") == "stop":
+                            stop.set()
+                            done.set()
+                            return
+
+            tasks = [
+                asyncio.create_task(pump()),
+                asyncio.create_task(relay()),
+                asyncio.create_task(receive()),
+            ]
+            try:
+                await done.wait()
+            finally:
+                stop.set()
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                with contextlib.suppress(Exception):
+                    decoder.close()
+            # Exactly one done frame, whoever ended the session: the cap
+            # already sent its own, a client stop and a vendor hang-up both
+            # land here.
+            if not nonlocal_cap[0]:
+                with contextlib.suppress(Exception):
+                    await websocket.send_json(
+                        {"type": "done", "reason": "stop" if stop.is_set() else "provider_closed"}
+                    )
+    except Exception as exc:
+        log.exception("managed stream session failed")
+        with contextlib.suppress(Exception):
+            await _fail(
+                websocket,
+                STREAM_INFERENCE_FAILED,
+                f"{type(exc).__name__}: {exc}",
+            )

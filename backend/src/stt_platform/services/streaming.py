@@ -8,13 +8,16 @@ so each piece is testable (and importable) without a WebSocket.
 from __future__ import annotations
 
 import threading
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from typing import Protocol, cast
 
 import numpy as np
 
 from stt_platform.core.config import Settings
 from stt_platform.providers.base import ProviderTranscript
-from stt_platform.streaming.session import StreamConfig
+from stt_platform.streaming.session import StreamConfig, StreamEvent
 from stt_platform.streaming.vad import VadConfig
 
 __all__ = [
@@ -26,9 +29,14 @@ __all__ = [
     "STREAM_LOCAL_ONLY",
     "STREAM_MALFORMED_TRANSCRIPT",
     "STREAM_SAMPLE_RATE",
+    "STREAM_UNVERIFIED",
+    "ManagedStream",
+    "ManagedStreamConfig",
+    "ManagedStreamProvider",
     "PcmWindowProvider",
     "ProviderWindowTranscriber",
     "StreamLimiter",
+    "as_managed_stream_provider",
     "as_window_provider",
     "stream_config",
 ]
@@ -39,6 +47,9 @@ STREAM_SAMPLE_RATE = 16000
 # The codes the stream speaks. Documented in docs/streaming.md; tests assert
 # them literally, so a rename is a visible break, never a silent one.
 STREAM_LOCAL_ONLY = "STREAM_LOCAL_ONLY"
+#: A managed provider that either has no stream adapter or has not yet been
+#: live-verified: the capability flag gates service, not just advertising.
+STREAM_UNVERIFIED = "STREAM_UNVERIFIED"
 STREAM_BAD_REQUEST = "STREAM_BAD_REQUEST"
 STREAM_BUSY = "STREAM_BUSY"
 STREAM_DECODE_FAILED = "STREAM_DECODE_FAILED"
@@ -117,3 +128,56 @@ def stream_config(settings: Settings, *, language: str | None) -> StreamConfig:
         language=language,
         vad=VadConfig(),
     )
+
+
+# --------------------------------------------------------------------- #
+# managed streaming: the same wire contract, a vendor socket behind it
+# --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class ManagedStreamConfig:
+    """What a vendor stream is opened with. The decoder has already turned
+    the client's audio into 16 kHz mono PCM16, so every adapter speaks the
+    same format and none of them touches the container."""
+
+    sample_rate: int = 16000
+    channels: int = 1
+    language: str | None = None
+    model: str | None = None
+    max_duration_s: float = 300.0
+
+
+class ManagedStream(Protocol):
+    """A live vendor session: PCM in, platform events out.
+
+    ``events()`` yields the same ``partial`` / ``final`` events the local
+    session yields — the wire contract is the platform's, not the vendor's,
+    and an adapter is what stands between the two.
+    """
+
+    async def send(self, pcm16: bytes) -> None: ...
+
+    def events(self) -> AsyncIterator[StreamEvent]: ...
+
+    async def close(self) -> None: ...
+
+
+class ManagedStreamProvider(Protocol):
+    """A provider that can serve a stream through a vendor socket."""
+
+    def open_stream(
+        self, config: ManagedStreamConfig
+    ) -> AbstractAsyncContextManager[ManagedStream]: ...
+
+
+def as_managed_stream_provider(provider: object) -> ManagedStreamProvider | None:
+    """``provider`` as a managed-stream provider, or ``None``.
+
+    Structural, like ``as_window_provider``: the capability flag says what
+    was verified, the method says what exists. Capability flags are flipped
+    only after a live run, so both checks matter — a provider may implement
+    the method and still not advertise ``streaming`` yet.
+    """
+    if callable(getattr(provider, "open_stream", None)):
+        return cast(ManagedStreamProvider, provider)
+    return None

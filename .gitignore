@@ -49,3 +49,6 @@ results/**/tmp/
 
 # archify working folder (candidates, receipts, capture PNGs)
 .archify/
+
+# --- MkDocs site build output ---
+/site/

@@ -5,18 +5,19 @@ import {
   MagnifyingGlass,
   Play,
   WarningCircle,
-  X,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
 import type {
+  EvaluationArtifact,
   EvaluationComparisonRow,
   EvaluationRecord,
-  MlflowOutcome,
+  MetricExplanation,
   ProviderInfo,
 } from "../api/types";
+import EvaluationRunDetail from "../components/EvaluationRunDetail";
 
 /** How many runs the overview shows before it offers the rest. */
 const PAGE_SIZE = 8;
@@ -65,11 +66,6 @@ function percent(value: number | null | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-function seconds(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return `${value.toFixed(2)}s`;
-}
-
 function shortDate(value: string | null | undefined): string {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -100,40 +96,6 @@ function ApiFailure({
           Retry
         </button>
       )}
-    </p>
-  );
-}
-
-function MlflowStatus({ outcome }: { outcome: MlflowOutcome | null }) {
-  if (!outcome) {
-    return (
-      <p className="hint" data-testid="mlflow-status">
-        MLflow: not recorded for this evaluation.
-      </p>
-    );
-  }
-  if (outcome.status === "logged") {
-    return (
-      <p className="hint" data-testid="mlflow-status">
-        MLflow run {outcome.run_id} in experiment {outcome.experiment}{" "}
-        {outcome.tracking_uri && (
-          <a href={outcome.tracking_uri} target="_blank" rel="noreferrer">
-            MLflow
-          </a>
-        )}
-      </p>
-    );
-  }
-  if (outcome.status === "disabled") {
-    return (
-      <p className="hint" data-testid="mlflow-status">
-        MLflow logging is disabled (STT_MLFLOW_ENABLED=false).
-      </p>
-    );
-  }
-  return (
-    <p className="hint" data-testid="mlflow-status">
-      MLflow: {outcome.status} — {outcome.reason}
     </p>
   );
 }

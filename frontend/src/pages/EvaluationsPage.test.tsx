@@ -149,6 +149,9 @@ test("runs an evaluation and shows the new result", async () => {
       posted = await request.json();
       return HttpResponse.json(record(), { status: 201 });
     }),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -174,6 +177,8 @@ test("shows the mlflow run and links to the tracking server", async () => {
     http.get(`${BASE}/v1/evaluations/eval-1`, () =>
       HttpResponse.json(record()),
     ),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -203,6 +208,8 @@ test("a disabled or failed mlflow log is stated, never hidden", async () => {
         }),
       ),
     ),
+    artifactUnavailable("eval-2"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -257,6 +264,8 @@ test("per-clip scores are visible for a loaded evaluation", async () => {
     http.get(`${BASE}/v1/evaluations/eval-1`, () =>
       HttpResponse.json(record()),
     ),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -489,6 +498,9 @@ test("a second run cannot be started while one is in flight", async () => {
       await delay(150);
       return HttpResponse.json(record(), { status: 201 });
     }),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -508,6 +520,9 @@ test("a run in flight says it is running and how long it has been", async () => 
       await delay(150);
       return HttpResponse.json(record(), { status: 201 });
     }),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -523,6 +538,8 @@ test("a run's detail opens from the table and closes again", async () => {
     listHandler([row({ evaluation_id: "eval-1" })]),
     http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
     http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -551,6 +568,8 @@ test("per-group results are shown when the run has them", async () => {
         }),
       ),
     ),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
   );
 
   renderPage();
@@ -561,4 +580,249 @@ test("per-group results are shown when the run has them", async () => {
   expect(within(groups).getByText("en")).toBeInTheDocument();
   expect(within(groups).getByText("hi")).toBeInTheDocument();
   expect(within(groups).getByText("8.0%")).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// The run detail. Opening a run loads three things — the record, the stored
+// artifact and the metric explanations — and an artifact the server cannot
+// serve is stated, never faked with an empty diff.
+// ---------------------------------------------------------------------------
+
+/** Opening a run now also loads these two paths; keep the call set explicit. */
+function metricsHandler(metrics: unknown[] = []) {
+  return http.get(`${BASE}/v1/evaluations/metrics`, () =>
+    HttpResponse.json({ metrics }),
+  );
+}
+
+function artifactHandler(id: string, body: unknown) {
+  return http.get(`${BASE}/v1/evaluations/${id}/artifact`, () =>
+    HttpResponse.json(body),
+  );
+}
+
+function artifactUnavailable(
+  id: string,
+  status = 404,
+  code = "ARTIFACT_NOT_FOUND",
+  message = `evaluation '${id}' stored no artifact`,
+) {
+  return http.get(`${BASE}/v1/evaluations/${id}/artifact`, () =>
+    HttpResponse.json({ error: { code, message } }, { status }),
+  );
+}
+
+const clipRow = (clip_id: string, overrides: Record<string, unknown> = {}) => ({
+  clip_id,
+  status: "scored",
+  provider: "faster-whisper",
+  model: "large-v3-turbo",
+  audio_sha256: "abc",
+  wer: 0.1,
+  cer: 0.05,
+  word_errors: { substitutions: 1, deletions: 0, insertions: 0 },
+  char_errors: { substitutions: 1, deletions: 0, insertions: 0 },
+  timings: { processing_s: 0.9, real_time_factor: 0.07 },
+  timestamps: null,
+  error: null,
+  ...overrides,
+});
+
+const artifactClip = (clip_id: string, overrides: Record<string, unknown> = {}) => ({
+  ...clipRow(clip_id),
+  transcript_text: "the quick fox",
+  reference_text: "the quick brown fox",
+  alignment: {
+    code: "MMDM",
+    alphabet: { equal: "M", substitute: "S", delete: "D", insert: "I" },
+    reference_tokens: ["the", "quick", "brown", "fox"],
+    hypothesis_tokens: ["the", "quick", "fox"],
+  },
+  accuracy: {
+    wer: 0.25,
+    cer: 0.1,
+    normalization: { name: "stt-normalize-v1" },
+    word_errors: {
+      substitutions: 0,
+      deletions: 1,
+      insertions: 0,
+      errors: 1,
+      reference_units: 4,
+      hypothesis_units: 3,
+    },
+    char_errors: {
+      substitutions: 0,
+      deletions: 1,
+      insertions: 0,
+      errors: 1,
+      reference_units: 4,
+      hypothesis_units: 3,
+    },
+  },
+  attempts: 1,
+  retries: 0,
+  ...overrides,
+});
+
+const artifactBody = (overrides: Record<string, unknown> = {}) => ({
+  dataset: { dataset_id: "stt-eval-core", version: "1.0.0" },
+  provider: "faster-whisper",
+  model: "large-v3-turbo",
+  decoding: { language: "en" },
+  normalization: { name: "stt-normalize-v1" },
+  clips: [artifactClip("syn-en-tech-001")],
+  aggregate: { wer_micro: 0.1, clips_scored: 1, clips_total: 1 },
+  by_group: {},
+  insufficient_evidence: false,
+  started_at: "2026-10-11T20:00:00",
+  finished_at: "2026-10-11T20:00:12",
+  duration_s: 12.0,
+  mlflow: null,
+  ...overrides,
+});
+
+const metricExplanation = (overrides: Record<string, unknown> = {}) => ({
+  name: "wer_micro",
+  applies_to: "run aggregate",
+  unit: "ratio — total word errors over total reference words",
+  direction: "lower is better",
+  formula:
+    "sum(errors over scored clips) / sum(reference words over scored clips)",
+  inputs: "every clip the run scored",
+  normalization: "stt-normalize-v1",
+  edge_behaviour: "null when the run scored no clips with a reference",
+  limitations: "long clips dominate",
+  computed_by: "wer_micro",
+  ...overrides,
+});
+
+test("opening a run loads its artifact and the server's metric explanations", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactHandler("eval-1", artifactBody()),
+    metricsHandler([metricExplanation()]),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  await userEvent.click(within(table).getByRole("button", { name: "eval-1" }));
+
+  const detail = await screen.findByTestId("evaluation-detail");
+
+  // The explanation is the server's own, not one the console invented.
+  const card = within(detail).getByTestId("metric-card-wer_micro");
+  await userEvent.click(within(card).getByText(/what this number means/i));
+  expect(
+    within(card).getByText(
+      "sum(errors over scored clips) / sum(reference words over scored clips)",
+    ),
+  ).toBeInTheDocument();
+
+  // Selecting a clip renders the alignment the artifact carries.
+  await userEvent.click(
+    within(detail).getByRole("button", { name: "syn-en-tech-001" }),
+  );
+  expect(within(detail).getByTestId("diff-reference")).toBeInTheDocument();
+  expect(within(detail).getByTestId("diff-counts")).toHaveTextContent(
+    "deletions 1",
+  );
+
+  // A transcript is not an evaluation, and the page says so.
+  expect(within(detail).getByText(/transcription result/i)).toBeInTheDocument();
+});
+
+test("a run whose artifact is missing says so, and no diff is offered", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  await userEvent.click(within(table).getByRole("button", { name: "eval-1" }));
+
+  const note = await screen.findByTestId("artifact-note");
+  expect(note).toHaveTextContent(/ARTIFACT_NOT_FOUND/);
+  expect(note).toHaveTextContent(/reference-versus-transcript/i);
+
+  // The clip list still works off the record; only the words are missing.
+  const detail = screen.getByTestId("evaluation-detail");
+  const clips = within(detail).getByRole("table", { name: /clips/i });
+  expect(within(clips).getByText("syn-en-tech-001")).toBeInTheDocument();
+
+  await userEvent.click(
+    within(clips).getByRole("button", { name: "syn-en-tech-001" }),
+  );
+  expect(screen.queryByTestId("diff-reference")).not.toBeInTheDocument();
+});
+
+test("a deployment without artifact storage is stated, not hidden", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-2" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-2`, () =>
+      HttpResponse.json(record({ evaluation_id: "eval-2" })),
+    ),
+    artifactUnavailable(
+      "eval-2",
+      503,
+      "STORAGE_NOT_CONFIGURED",
+      "this deployment has no object storage configured",
+    ),
+    metricsHandler([]),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  await userEvent.click(within(table).getByRole("button", { name: "eval-2" }));
+
+  const note = await screen.findByTestId("artifact-note");
+  expect(note).toHaveTextContent(/STORAGE_NOT_CONFIGURED/);
+  expect(note).toHaveTextContent(/no object storage configured/i);
+});
+
+test("the clip table of an open run searches, sorts and pages", async () => {
+  const clips = Array.from({ length: 12 }, (_, index) => {
+    const n = index + 1;
+    // clip-12 is deliberately the cleanest, so a sort has something to find.
+    return clipRow(`clip-${String(n).padStart(2, "0")}`, {
+      wer: n === 12 ? 0.001 : 0.1,
+    });
+  });
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1" })]),
+    http.get(`${BASE}/v1/providers`, () => HttpResponse.json({ providers: [] })),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () =>
+      HttpResponse.json(record({ clips })),
+    ),
+    artifactHandler("eval-1", artifactBody({ clips: [] })),
+    metricsHandler([]),
+  );
+
+  renderPage();
+  const table = await screen.findByRole("table", { name: /evaluations/i });
+  await userEvent.click(within(table).getByRole("button", { name: "eval-1" }));
+
+  const clipTable = await screen.findByRole("table", { name: /clips/i });
+  expect(within(clipTable).getAllByRole("row")).toHaveLength(11); // header + 10
+  expect(screen.getByTestId("clip-page")).toHaveTextContent("Page 1 of 2");
+
+  await userEvent.type(screen.getByLabelText(/search clips/i), "clip-12");
+  expect(within(clipTable).getAllByRole("row")).toHaveLength(2);
+  expect(screen.getByTestId("clip-page")).toHaveTextContent("Page 1 of 1");
+
+  await userEvent.clear(screen.getByLabelText(/search clips/i));
+  const werHeader = within(clipTable).getByRole("columnheader", { name: /wer/i });
+  await userEvent.click(within(werHeader).getByRole("button"));
+  expect(werHeader).toHaveAttribute("aria-sort", "ascending");
+  const bodyRows = within(clipTable).getAllByRole("row").slice(1);
+  expect(within(bodyRows[0]).getByText("clip-12")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /next page/i }));
+  expect(screen.getByTestId("clip-page")).toHaveTextContent("Page 2 of 2");
 });

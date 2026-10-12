@@ -1,12 +1,14 @@
 import { ApiError, normalizeError } from "./errors";
 import type {
   AuthConfig,
+  EvaluationArtifact,
   EvaluationList,
   LivePreview,
   EvaluationRecord,
   EvaluationRequest,
   JobRecord,
   LoginResponse,
+  MetricExplanationList,
   ProviderInfo,
   SessionInfo,
   TranscriptResult,
@@ -70,6 +72,10 @@ export interface ApiClient {
   login(username: string, password: string): Promise<LoginResponse>;
   logout(): Promise<{ ok: boolean }>;
   getEvaluation(id: string): Promise<EvaluationRecord>;
+  /** The words behind a run's numbers: references, transcripts, alignments. */
+  getEvaluationArtifact(id: string): Promise<EvaluationArtifact>;
+  /** Every metric's explanation, served from the code that computes it. */
+  getEvaluationMetrics(): Promise<MetricExplanationList>;
   listEvaluations(): Promise<EvaluationList>;
   createEvaluation(input: EvaluationRequest): Promise<EvaluationRecord>;
 }
@@ -193,6 +199,14 @@ export function createApiClient(baseUrl: string): ApiClient {
 
     getEvaluation: (id) =>
       get<EvaluationRecord>(`/v1/evaluations/${encodeURIComponent(id)}`),
+
+    getEvaluationArtifact: (id) =>
+      get<EvaluationArtifact>(
+        `/v1/evaluations/${encodeURIComponent(id)}/artifact`,
+      ),
+
+    getEvaluationMetrics: () =>
+      get<MetricExplanationList>("/v1/evaluations/metrics"),
 
     listEvaluations: () => get<EvaluationList>("/v1/evaluations"),
 

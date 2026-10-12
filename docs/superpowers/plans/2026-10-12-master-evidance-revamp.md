@@ -258,3 +258,28 @@ report with A–G sections and an honest passed/failed/blocked/not-run table.
   and the words live in the artifact.
 - Route pins, `docs/openapi.json` (18 paths), `docs/api.md` and
   `docs/evaluation.md` updated; backend 566 passed / 3 skipped, ruff clean.
+
+### S8 — real-time across providers (partial, reported) 🟡
+
+- **The shared contract exists**: `ManagedStreamConfig`, `ManagedStream`,
+  `ManagedStreamProvider` and `as_managed_stream_provider` in
+  `services/streaming.py`. A managed session decodes through the same
+  one-ffmpeg-per-session path, speaks the same wire contract, and keeps the
+  platform's duration cap — an adapter cannot weaken it.
+- **Capability flags gate service, not just advertising**: the WS route
+  refuses a managed provider with `STREAM_UNVERIFIED` unless it both
+  implements `open_stream` and declares `streaming: true`. A test proves a
+  declared-false adapter cannot take a client's audio.
+- **Deepgram adapter implemented** (`open_stream` → the vendor's real-time
+  socket, message → event translation with degenerate words dropped never
+  clamped, errors surfaced as events), unit-tested against a local WebSocket
+  that speaks the vendor's protocol (auth header, query parameters,
+  `CloseStream`, partial/final/error mapping — 10 tests) and integrated
+  through the route against an in-process fake vendor (ready → partial →
+  final → done, with PCM proven to reach it).
+- **Deliberately not done, and not claimed**: the one bounded live Deepgram
+  run that would flip `streaming: true` (the flag is still `false`, so the
+  platform does not yet offer it), and the Sarvam / ElevenLabs realtime
+  adapters (their batch paths are complete; their streaming paths are
+  documented as proposals only). Recorded here rather than implied by a
+  capability flag.

@@ -26,10 +26,18 @@ vendor returns no utterances.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
+import logging
 import mimetypes
 import threading
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
+
+import websockets
 
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import ProviderError
@@ -37,8 +45,23 @@ from stt_platform.providers.base import ProviderTranscript, TranscriptionRequest
 from stt_platform.providers.managed.http_base import ManagedHttpClient
 from stt_platform.schemas.providers import ProviderCapabilities, ProviderHealth
 from stt_platform.schemas.transcript import TranscriptSegment, TranscriptWord
+from stt_platform.services.streaming import ManagedStreamConfig
+from stt_platform.streaming.session import StreamEvent
 
 MODEL = "nova-3"
+
+log = logging.getLogger(__name__)
+
+#: Deepgram's real-time endpoint. The query parameters pin everything the
+#: platform already guarantees on its own wire: 16 kHz mono PCM16 in,
+#: interim results on (the console shows them), final results punctuated.
+#: https://developers.deepgram.com/reference/speech-to-text/listen-streaming
+STREAM_PATH = "/v1/listen"
+_STREAM_QUERY = (
+    "encoding=linear16&sample_rate={sample_rate}&channels={channels}"
+    "&interim_results=true&punctuate=true&smart_format=true"
+)
+_OPEN_TIMEOUT_S = 15.0
 
 # Deepgram documents broad multilingual support; we only claim what the
 # vendor documents, so the list stays conservative and honest.
@@ -100,6 +123,21 @@ class DeepgramProvider:
                 "language_detection": "verified",
                 "max_file_bytes": "documented",
             },
+        )
+
+    def open_stream(self, config: ManagedStreamConfig) -> DeepgramStreamSession:
+        """A real-time session with Deepgram (see ``docs/streaming.md``).
+
+        The capability flag stays ``streaming: false`` until a live run
+        proves this path end to end; the method exists so the platform can
+        offer it the moment that run is recorded.
+        """
+        return DeepgramStreamSession(
+            url=_stream_url(
+                self._settings.deepgram_base_url, config, config.model or MODEL
+            ),
+            api_key=self._settings.deepgram_api_key or "",
+            model=config.model or MODEL,
         )
 
     def health(self) -> ProviderHealth:
@@ -305,3 +343,190 @@ def _segments(
             )
         )
     return segments
+
+
+def _stream_url(base_url: str, config: ManagedStreamConfig, model: str) -> str:
+    """``https://…`` becomes ``wss://…`` and the query carries the format."""
+    scheme, _, rest = base_url.partition("://")
+    ws_scheme = {"https": "wss", "http": "ws"}.get(scheme)
+    if ws_scheme is None:
+        raise ProviderError(f"deepgram base_url has no ws scheme: {base_url!r}")
+    query = _STREAM_QUERY.format(
+        sample_rate=config.sample_rate, channels=config.channels
+    )
+    return f"{ws_scheme}://{rest}{STREAM_PATH}?{query}&model={model}"
+
+
+def _words_from_alternative(alternative: dict[str, Any]) -> list[TranscriptWord]:
+    """Vendor words -> canonical words. Degenerate spans (end <= start) are
+    dropped, never clamped — the same rule the batch path follows."""
+    words: list[TranscriptWord] = []
+    for raw in alternative.get("words") or []:
+        start = raw.get("start")
+        end = raw.get("end")
+        if start is None or end is None or end <= start:
+            continue
+        words.append(
+            TranscriptWord(
+                start=float(start),
+                end=float(end),
+                text=str(raw.get("punctuated_word") or raw.get("word") or ""),
+                confidence=(
+                    float(raw["confidence"])
+                    if raw.get("confidence") is not None
+                    else None
+                ),
+            )
+        )
+    return words
+
+
+def stream_event_from_message(
+    message: dict[str, Any], *, fallback_start_s: float = 0.0
+) -> StreamEvent | None:
+    """One vendor message -> one platform event, or ``None`` for messages
+    that carry no transcript (``Metadata``, ``UtteranceEnd``, ``SpeechStarted``).
+
+    An ``Error``/``Exception`` message becomes an ``error`` event — the
+    session must never continue as if the vendor were still listening.
+    """
+    kind = message.get("type")
+    if kind in ("Metadata", "UtteranceEnd", "SpeechStarted", None):
+        return None
+    if kind in ("Error", "Exception"):
+        detail = message.get("description") or message.get("message") or kind
+        return StreamEvent("error", {"code": "PROVIDER_STREAM_ERROR", "message": str(detail)})
+
+    if kind != "Results":
+        return StreamEvent(
+            "error",
+            {
+                "code": "PROVIDER_STREAM_ERROR",
+                "message": f"deepgram sent an unrecognized message type {kind!r}",
+            },
+        )
+
+    alternatives = ((message.get("channel") or {}).get("alternatives")) or [{}]
+    alternative = alternatives[0] if alternatives else {}
+    text = str(alternative.get("transcript") or "").strip()
+    start_s = float(message.get("start") or fallback_start_s)
+    duration_s = float(message.get("duration") or 0.0)
+    end_s = start_s + duration_s
+    words = _words_from_alternative(alternative)
+
+    if message.get("is_final"):
+        try:
+            segments = [
+                TranscriptSegment(
+                    start=words[0].start if words else round(start_s, 3),
+                    end=words[-1].end if words else round(end_s, 3),
+                    text=text,
+                    words=words,
+                ).model_dump()
+            ] if text else []
+        except Exception as exc:  # a transcript the schema cannot represent
+            return StreamEvent(
+                "error",
+                {
+                    "code": "PROVIDER_STREAM_ERROR",
+                    "message": f"deepgram returned a segment the schema rejects: {exc}",
+                },
+            )
+        payload: dict[str, Any] = {
+            "text": text,
+            "segments": segments,
+            "window": {"start_s": round(start_s, 3), "end_s": round(end_s, 3)},
+        }
+        return StreamEvent("final", payload)
+
+    return StreamEvent(
+        "partial",
+        {
+            "text": text,
+            "segments": [],
+            "window": {"start_s": round(start_s, 3), "end_s": round(end_s, 3)},
+            "is_final": False,
+        },
+    )
+
+
+class DeepgramStreamSession:
+    """A Deepgram real-time session, speaking the platform's wire contract.
+
+    Owns exactly one vendor socket. ``send`` writes PCM16 frames; ``events``
+    yields platform events until the vendor stops sending or the socket
+    closes; ``close`` asks the vendor to flush and then closes. Every
+    failure ends the event iterator with an ``error`` event — the caller
+    never sees a silent stop.
+    """
+
+    def __init__(
+        self,
+        *,
+        url: str,
+        api_key: str,
+        model: str,
+        connect_timeout_s: float = _OPEN_TIMEOUT_S,
+    ) -> None:
+        self._url = url
+        self._api_key = api_key
+        self._model = model
+        self._connect_timeout_s = connect_timeout_s
+        self._socket: Any | None = None
+        self._closed = False
+
+    async def __aenter__(self) -> DeepgramStreamSession:
+        self._socket = await asyncio.wait_for(
+            websockets.connect(
+                self._url,
+                additional_headers={"Authorization": f"Token {self._api_key}"},
+                max_size=None,
+            ),
+            timeout=self._connect_timeout_s,
+        )
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.close()
+
+    async def send(self, pcm16: bytes) -> None:
+        if self._socket is None or self._closed:
+            raise ProviderError("deepgram stream is not open")
+        await self._socket.send(pcm16)
+
+    async def events(self) -> AsyncIterator[StreamEvent]:
+        assert self._socket is not None, "open_stream() before events()"
+        try:
+            async for raw in self._socket:
+                if isinstance(raw, bytes):
+                    continue  # binary replies carry no transcript
+                try:
+                    message = json.loads(raw)
+                except ValueError as exc:
+                    yield StreamEvent(
+                        "error",
+                        {
+                            "code": "PROVIDER_STREAM_ERROR",
+                            "message": f"deepgram sent a non-JSON frame: {exc}",
+                        },
+                    )
+                    return
+                event = stream_event_from_message(message)
+                if event is not None:
+                    yield event
+        except websockets.exceptions.ConnectionClosed:
+            return  # the vendor hung up; the session is simply over
+        except Exception as exc:  # pragma: no cover - transport-specific
+            yield StreamEvent(
+                "error",
+                {"code": "PROVIDER_STREAM_ERROR", "message": f"{type(exc).__name__}: {exc}"},
+            )
+
+    async def close(self) -> None:
+        if self._socket is None or self._closed:
+            return
+        self._closed = True
+        with contextlib.suppress(Exception):
+            await self._socket.send(json.dumps({"type": "CloseStream"}))
+        with contextlib.suppress(Exception):
+            await self._socket.close()

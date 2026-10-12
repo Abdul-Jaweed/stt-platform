@@ -157,7 +157,8 @@ def test_a_managed_provider_is_refused_before_any_audio(tmp_path, pg_engine, pg_
         ws.send_json({"type": "start", "provider": "managed-fake"})
         error = ws.receive_json()
         assert error["type"] == "error"
-        assert error["code"] == "STREAM_LOCAL_ONLY"
+        assert error["code"] == "STREAM_UNVERIFIED"
+        assert "does not offer streaming" in error["message"]
         assert error["fatal"] is True
         with pytest.raises(WebSocketDisconnect):
             ws.receive_json()
@@ -240,3 +241,123 @@ def test_a_second_stream_is_refused_while_the_first_is_running(
         first.send_json({"type": "stop"})
         done = read_until(first, "done")
         assert done["reason"] == "stop"
+
+
+class _FakeVendorStream:
+    """A vendor socket in memory: PCM in, two platform events out."""
+
+    def __init__(self) -> None:
+        self.audio = b""
+        self.closed = False
+
+    async def __aenter__(self) -> _FakeVendorStream:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.close()
+
+    async def send(self, pcm16: bytes) -> None:
+        self.audio += pcm16
+
+    async def events(self):
+        import asyncio
+
+        from stt_platform.streaming.session import StreamEvent
+
+        # A vendor waits for audio before it transcribes; ending immediately
+        # would hide whether the platform ever handed it any.
+        for _ in range(200):
+            if self.audio:
+                break
+            await asyncio.sleep(0.01)
+        assert self.audio, "the vendor stream received no audio"
+        yield StreamEvent(
+            "partial",
+            {"text": "hel", "segments": [], "window": {"start_s": 0.0, "end_s": 0.2}, "is_final": False},
+        )
+        yield StreamEvent(
+            "final",
+            {
+                "text": "hello",
+                "segments": [{"start": 0.0, "end": 0.4, "text": "hello", "words": []}],
+                "window": {"start_s": 0.0, "end_s": 0.4},
+            },
+        )
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class ManagedStreamingFake(StreamingFakeProvider):
+    """A managed provider that DOES offer a stream — the path a vendor
+    adapter takes once its capability flag is verified."""
+
+    id = "managed-streaming-fake"
+    is_local = False
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.vendor = _FakeVendorStream()
+        self.configs: list[object] = []
+
+    def capabilities(self):
+        caps = super().capabilities()
+        return caps.model_copy(update={"streaming": True})
+
+    def open_stream(self, config):
+        self.configs.append(config)
+        return self.vendor
+
+
+def test_a_verified_managed_provider_serves_the_same_wire_contract(
+    tmp_path, pg_engine, pg_url
+):
+    Base.metadata.drop_all(pg_engine)
+    Base.metadata.create_all(pg_engine)
+    provider = ManagedStreamingFake()
+    _app, client = make_client(tmp_path, pg_url, [provider])
+
+    with client.websocket_connect(STREAM_URL) as ws:
+        ws.send_json(
+            {"type": "start", "provider": provider.id, "input_format": "pcm16"}
+        )
+        ready = ws.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["provider"] == provider.id
+
+        ws.send_bytes(tone(0.5))
+        partial = read_until(ws, "partial")
+        assert partial["text"] == "hel"
+        assert partial["is_final"] is False
+        final = read_until(ws, "final")
+        assert final["text"] == "hello"
+
+        ws.send_json({"type": "stop"})
+        done = read_until(ws, "done")
+        assert done["reason"] in {"stop", "provider_closed"}
+
+    assert provider.configs, "the vendor stream was never opened"
+    assert len(provider.vendor.audio) > 0, "no decoded PCM reached the vendor"
+    assert provider.vendor.closed
+
+
+def test_a_managed_adapter_without_a_verified_flag_is_refused(
+    tmp_path, pg_engine, pg_url
+):
+    """The capability flag gates *service*, not just advertising: an adapter
+    that no live run has proven yet cannot take a client's audio."""
+    Base.metadata.drop_all(pg_engine)
+    Base.metadata.create_all(pg_engine)
+    provider = ManagedStreamingFake()
+    unverified = provider.capabilities().model_copy(update={"streaming": False})
+    provider.capabilities = lambda: unverified  # type: ignore[method-assign]
+    _app, client = make_client(tmp_path, pg_url, [provider])
+
+    with client.websocket_connect(STREAM_URL) as ws:
+        ws.send_json({"type": "start", "provider": provider.id})
+        error = ws.receive_json()
+        assert error["type"] == "error"
+        assert error["code"] == "STREAM_UNVERIFIED"
+        assert "live verification pending" in error["message"]
+
+    assert not provider.configs, "a refused provider was opened anyway"

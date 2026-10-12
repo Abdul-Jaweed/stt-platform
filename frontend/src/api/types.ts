@@ -4,6 +4,7 @@
  * Source of truth: backend `schemas/` + docs/api.md. No codegen: the
  * contract is small and stable; drift is caught by the live e2e (T7).
  */
+import type { Alignment } from "../lib/alignment";
 
 export type JobStatus =
   | "ACCEPTED"
@@ -286,6 +287,90 @@ export interface EvaluationComparisonRow {
 export interface EvaluationList {
   evaluations: EvaluationComparisonRow[];
   count: number;
+}
+
+/**
+ * One metric's explanation, served from the code that computes it.
+ * `computed_by` names the callable the number actually comes from; the text
+ * fields say what the number means, where it can mislead, and when it is
+ * absent instead of zero.
+ */
+export interface MetricExplanation {
+  name: string;
+  applies_to: string;
+  unit: string;
+  direction: string;
+  formula: string;
+  inputs: string;
+  normalization: string;
+  edge_behaviour: string;
+  limitations: string;
+  computed_by: string;
+}
+
+/** `GET /v1/evaluations/metrics`: every metric the platform reports. */
+export interface MetricExplanationList {
+  metrics: MetricExplanation[];
+}
+
+/** The counts behind one per-clip WER/CER measurement. */
+export interface EvaluationErrorCounts {
+  substitutions: number;
+  deletions: number;
+  insertions: number;
+  errors: number;
+  reference_units: number;
+  hypothesis_units: number;
+}
+
+/**
+ * One clip in the stored artifact: the words themselves, onto which the
+ * numbers in the record index. `alignment` and `accuracy` are null for a
+ * clip that never produced a transcript — there is nothing to compare, and
+ * an empty diff would read like an agreement.
+ */
+export interface EvaluationArtifactClip {
+  clip_id: string;
+  status: string;
+  provider: string;
+  model: string | null;
+  audio_sha256: string | null;
+  transcript_text: string | null;
+  reference_text: string | null;
+  alignment: Alignment | null;
+  accuracy: {
+    wer: number | null;
+    cer: number | null;
+    normalization: Record<string, unknown>;
+    word_errors: EvaluationErrorCounts;
+    char_errors: EvaluationErrorCounts;
+  } | null;
+  timestamps: Record<string, unknown> | null;
+  timings: Record<string, number | null>;
+  attempts: number;
+  retries: number;
+  error: string | null;
+}
+
+/**
+ * `GET /v1/evaluations/{id}/artifact`: the words behind a run's numbers.
+ * Answers 404 ARTIFACT_NOT_FOUND when the run stored none, and 503
+ * STORAGE_NOT_CONFIGURED when the deployment has no storage at all.
+ */
+export interface EvaluationArtifact {
+  dataset: { dataset_id: string; version: string };
+  provider: string;
+  model: string | null;
+  decoding: Record<string, unknown>;
+  normalization: Record<string, unknown>;
+  clips: EvaluationArtifactClip[];
+  aggregate: Record<string, number | null>;
+  by_group: Record<string, Record<string, Record<string, number | null>>>;
+  insufficient_evidence: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_s: number;
+  mlflow: MlflowOutcome | null;
 }
 
 export interface EvaluationRequest {

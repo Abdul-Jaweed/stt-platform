@@ -133,3 +133,45 @@ Capability provenance is a claim about verification: `faster-whisper` reports
 stack and the streamed text agreed with the batch transcript. Until such a run
 happened, the flag was `false` and the console would have had nothing to talk
 to — the honest state, not a hopeful one.
+
+## Managed providers (adapter present, live verification pending)
+
+The wire contract above is the platform's, and a managed provider can serve
+it through a vendor socket: `DeepgramProvider.open_stream()` connects to
+Deepgram's real-time endpoint (`wss://api.deepgram.com/v1/listen`), sends
+the same 16 kHz mono PCM16 the local path decodes to, and translates the
+vendor's messages into the same `partial` / `final` events — interim
+results as partials, `is_final` results as finals with the vendor's word
+timings (degenerate words dropped, never clamped), vendor errors as `error`
+events. The duration cap stays the platform's.
+
+Two rules hold this honest:
+
+* **The capability flag gates service, not just advertising.** A managed
+  provider is refused with `STREAM_UNVERIFIED` unless it both implements
+  `open_stream` **and** declares `streaming: true`. Deepgram's flag is still
+  `false`: the adapter is unit-tested against a local stand-in that speaks
+  the vendor's protocol (auth header, query parameters, `CloseStream`,
+  partial/final/error mapping — `tests/unit/test_deepgram_stream.py`) and
+  the route is tested against a fake vendor
+  (`tests/integration/test_stream_api.py`), but **no live Deepgram run has
+  happened yet**, so the platform does not yet offer it. Flipping the flag
+  is the last step of a live run, and the run's evidence goes in
+  `docs/live-provider-verification.md`.
+* **A vendor adapter cannot weaken the contract.** Everything the local
+  session guarantees (one ffmpeg per session, the same PCM format, the
+  same event shapes, the cap) applies to a managed session too; an adapter
+  that cannot express something raises rather than guessing.
+
+**Not implemented** (documented, not claimed): Sarvam's real-time API and
+ElevenLabs' realtime transcription have no adapters here yet. Their batch
+paths are complete; their streaming paths are proposals, and the platform
+does not advertise `streaming` for either.
+
+## Testing a stream without spending money
+
+`tests/unit/test_deepgram_stream.py` starts a local WebSocket that speaks
+the vendor's protocol and asserts the adapter's framing, auth header and
+translation; `tests/integration/test_stream_api.py` drives the whole route
+against an in-process fake provider, including the refusal of an
+unverified adapter. Neither touches the network.

@@ -35,3 +35,13 @@ def test_apply_runtime_env_sets_hf_cache_and_dirs(tmp_path):
 def test_get_settings_is_cached():
     get_settings.cache_clear()
     assert get_settings() is get_settings()
+
+
+def test_tracing_is_on_by_default_and_an_env_switch_turns_it_off(monkeypatch):
+    """Instrumentation needs no opt-in; ``STT_OTEL_ENABLED=false`` is the
+    documented off switch (a no-op provider, zero overhead)."""
+    monkeypatch.delenv("STT_OTEL_ENABLED", raising=False)
+    assert Settings(_env_file=None).otel_enabled is True
+
+    monkeypatch.setenv("STT_OTEL_ENABLED", "false")
+    assert Settings(_env_file=None).otel_enabled is False

@@ -87,10 +87,14 @@ class Settings(BaseSettings):
     provider_connect_timeout_s: float = 10.0
     max_provider_response_bytes: int = 25_000_000
 
-    # Observability (Phase 5). Off by default: a no-op provider means zero
-    # overhead and no new failure mode. "otlp" posts to otel_endpoint
-    # (OTLP/HTTP); "console" prints spans; "none" records nothing.
-    otel_enabled: bool = False
+    # Observability. ON by default: instrumentation should not need to be
+    # discovered before it can help. The endpoint is optional by contract --
+    # with no collector listening, exports fail quietly and requests are
+    # untouched -- and ``STT_OTEL_ENABLED=false`` restores the no-op
+    # provider for anyone who wants zero overhead. "otlp" posts to
+    # otel_endpoint (OTLP/HTTP); "console" prints spans; "none" records
+    # nothing but keeps instrumentation call sites identical.
+    otel_enabled: bool = True
     otel_exporter: str = "otlp"
     otel_endpoint: str = "http://127.0.0.1:4318"
     otel_service_name: str = "stt-platform"

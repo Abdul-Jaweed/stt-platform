@@ -31,6 +31,11 @@ FORWARDED = [
     "STT_STREAM_IDLE_TIMEOUT_S",
     "STT_STREAM_MAX_SESSIONS",
     "STT_STREAM_MAX_FRAME_BYTES",
+    # Observability is on by default now: the off switch and the exporter
+    # knobs must be settable from .env, or a deployment cannot aim traces.
+    "STT_OTEL_ENABLED",
+    "STT_OTEL_EXPORTER",
+    "STT_OTEL_ENDPOINT",
 ]
 
 

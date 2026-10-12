@@ -37,3 +37,29 @@ def _dispose_app_engines(monkeypatch):
     yield
     for engine in engines:
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_observability(monkeypatch):
+    """No test inherits another test's tracer or meter provider.
+
+    Tracing is on by default in the application now (Phase 9), so a test
+    that merely builds an app would otherwise install a real OTLP provider
+    — exporting to a collector that is not there — and leak it into every
+    later test. ``setup_tracing`` is idempotent per process, so a leaked
+    provider silently starves the in-memory exporter a tracing test sets
+    up: the spans test then fails with the exporter it installed empty.
+    That is exactly what happened when the default flipped.
+
+    Tests that *do* exercise spans opt in explicitly (``otel_enabled=True``
+    plus their own exporter — explicit kwargs beat this env var) and this
+    fixture still tears their provider down afterwards.
+    """
+    from stt_platform.observability import metrics, tracing
+
+    monkeypatch.setenv("STT_OTEL_ENABLED", "false")
+    tracing.shutdown_tracing()
+    metrics.shutdown_metrics()
+    yield
+    tracing.shutdown_tracing()
+    metrics.shutdown_metrics()

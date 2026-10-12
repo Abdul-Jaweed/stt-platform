@@ -160,3 +160,27 @@ report with A–G sections and an honest passed/failed/blocked/not-run table.
 - Also corrected: `docs/providers.md`'s matrix still said ElevenLabs
   diarization was only *documented*; the 2026-10-12 live run had already
   moved it to *verified* in code — docs now match.
+
+### S2 — OpenTelemetry on by default ✅
+
+- `otel_enabled` default flipped to `true`; `STT_OTEL_ENABLED=false` remains
+  the documented off switch (no-op providers, a function call and nothing
+  else). `test_tracing_is_on_by_default_and_an_env_switch_turns_it_off` pins
+  both directions.
+- The endpoint stays optional by contract:
+  `test_an_unreachable_collector_is_not_an_error` sets up tracing against a
+  dead port, emits a span, and flushes — no raise anywhere.
+- Compose forwards `STT_OTEL_ENABLED` / `STT_OTEL_EXPORTER` /
+  `STT_OTEL_ENDPOINT` (guard test extended; `.env.example` documents them,
+  including the throwaway-Jaeger recipe).
+- Live verification, 5/5 (`scripts/observability_evidence.py`, raw logs in
+  `results/observability/`): a real upload succeeded with `otlp` aimed at a
+  dead endpoint; the API exported spans for the synchronous path and the
+  worker for the asynchronous one; and one trace id appears in **both**
+  processes — the workflow inherits the request's context rather than
+  starting an unrelated trace.
+- No new service in compose: Docker Hub was unreachable from the daemon
+  while this slice ran (DNS), so pinning a collector image by digest was not
+  possible — and shipping an unpinned image would have broken the repo's
+  own convention. The documented `docker run … jaegertracing/all-in-one`
+  recipe covers local trace UI without that dishonesty.

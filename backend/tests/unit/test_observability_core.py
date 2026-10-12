@@ -173,3 +173,24 @@ def test_redact_mapping_drops_content_fields():
         assert gone not in redacted
     assert "***" in redacted["authorization"]
     assert "***" in redacted["api_key"]
+
+
+def test_an_unreachable_collector_is_not_an_error(monkeypatch):
+    """The OTLP endpoint is optional by contract.
+
+    Setup must not raise, a span must still be emitted, and the flush on
+    shutdown must swallow the connection error -- tracing is never allowed
+    to become a failure mode of the request it describes.
+    """
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TIMEOUT", "1")
+    # Port 9 (discard) on loopback: nothing is listening, by the standard.
+    settings = _settings(
+        otel_exporter="otlp", otel_endpoint="http://127.0.0.1:9"
+    )
+
+    provider = tracing.setup_tracing(settings)
+
+    assert provider is not None
+    with provider.get_tracer("probe").start_as_current_span("probe"):
+        pass
+    tracing.shutdown_tracing()  # flush -> a real export against a dead port

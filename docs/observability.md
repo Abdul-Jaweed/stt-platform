@@ -1,13 +1,18 @@
 # Observability
 
-Phase 5 wires OpenTelemetry through the API, the workflow, the worker and
-every provider call, and keeps the cost of that at zero when it is off.
+Phase 5 wired OpenTelemetry through the API, the workflow, the worker and
+every provider call. Phase 9 (the Evidance revamp) flipped the default: it
+is **on** in the standard dev and Docker configurations, because
+instrumentation that has to be discovered before it can help is
+instrumentation nobody reads.
 
 Three rules decide everything here:
 
-1. **Off by default.** No exporter, no network, no background thread, no
-   extra span. Turning it on must never change a transcription result —
-   only what is recorded about it.
+1. **On by default, optional by contract.** `STT_OTEL_ENABLED=false`
+   restores the no-op providers (a function call and nothing else). With
+   tracing on and *no collector listening*, exports fail quietly in the
+   background and transcription is untouched — `test_an_unreachable_
+   collector_is_not_an_error` and the live verification below pin that.
 2. **One source of truth for names.** Every metric name lives in
    `observability/names.py`; the instruments are built from it and the
    dashboard and alert rules are validated against it, so a name that
@@ -22,7 +27,7 @@ Everything is env-gated (`backend/.env`, see `.env.example`):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `STT_OTEL_ENABLED` | `false` | Master switch for traces and metrics |
+| `STT_OTEL_ENABLED` | `true` | Master switch for traces and metrics (`false` = no-op providers) |
 | `STT_OTEL_EXPORTER` | `otlp` | `otlp` \| `console` \| `none` (`console` prints spans — for verification only) |
 | `STT_OTEL_ENDPOINT` | `http://127.0.0.1:4318` | OTLP/HTTP collector endpoint |
 | `STT_OTEL_SERVICE_NAME` | `stt-platform` | `service.name` resource attribute |
@@ -37,6 +42,40 @@ Everything is env-gated (`backend/.env`, see `.env.example`):
 With `STT_OTEL_ENABLED=false` the tracer and meter providers are never
 created: the OpenTelemetry API's no-op implementations are used, so span
 and metric calls cost a function call and nothing else.
+
+### Reading traces locally
+
+No collector is required. Two ways to see real spans from a real request:
+
+```bash
+# 1. Straight from the log (any deployment): one JSON span per line.
+STT_OTEL_EXPORTER=console  # set in .env, then ./launch.sh restart
+./launch.sh logs api | grep '"name"'
+
+# 2. Any OTLP/HTTP endpoint — e.g. a throwaway Jaeger UI:
+docker run -d --name jaeger -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one
+# then STT_OTEL_ENDPOINT=<an address the containers can reach> in .env
+```
+
+The compose file forwards `STT_OTEL_ENABLED`, `STT_OTEL_EXPORTER` and
+`STT_OTEL_ENDPOINT` into both the API and the worker
+(`backend/tests/unit/test_compose_env.py` holds that wiring still).
+
+### Verified on the live stack (2026-10-12)
+
+`scripts/observability_evidence.py` drove the running deployment through all
+of this — 5/5 checks, raw logs in `results/observability/`:
+
+| Check | Result |
+| --- | --- |
+| a real upload with `otlp` aimed at a dead endpoint | **SUCCEEDED** — tracing is never a failure mode |
+| API spans for the synchronous path | `POST /v1/transcriptions`, `GET /v1/transcriptions/{job_id}`, `StartWorkflow:TranscriptionWorkflow`, … |
+| worker spans for the asynchronous path | `RunActivity:execute_attempt`, `stt.attempt`, `stt.provider.transcribe`, … |
+| trace context across the process boundary | one trace id present in **both** the API and the worker log (e.g. `23b87fbc…`), i.e. the workflow inherits the request's trace instead of starting an unrelated one |
+
+Log records carry `trace_id`/`span_id` in their JSON form
+(`STT_LOG_JSON=true`), which is what makes a span id quoted by an error
+report findable in the logs.
 
 ## Traces
 

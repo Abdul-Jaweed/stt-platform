@@ -38,6 +38,11 @@ x-backend-env: &backend-env
   STT_MAX_SYNC_DURATION_S: ${STT_MAX_SYNC_DURATION_S:-180}
   STT_GPU_CONCURRENCY: ${STT_GPU_CONCURRENCY:-1}
   STT_MANAGED_CONCURRENCY: ${STT_MANAGED_CONCURRENCY:-4}
+  # Observability (on by default; aim the endpoint at any OTLP/HTTP
+  # collector, or set the exporter to "console" to read spans in the log).
+  STT_OTEL_ENABLED: ${STT_OTEL_ENABLED:-true}
+  STT_OTEL_EXPORTER: ${STT_OTEL_EXPORTER:-otlp}
+  STT_OTEL_ENDPOINT: ${STT_OTEL_ENDPOINT:-http://127.0.0.1:4318}
   # The live stream runs inside the API process, so these bound it there.
   STT_STREAM_MAX_DURATION_S: ${STT_STREAM_MAX_DURATION_S:-300}
   STT_STREAM_IDLE_TIMEOUT_S: ${STT_STREAM_IDLE_TIMEOUT_S:-30}

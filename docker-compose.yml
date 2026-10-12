@@ -56,6 +56,7 @@ x-backend-env: &backend-env
   STT_SARVAM_API_KEY: ${STT_SARVAM_API_KEY:-}
   # Optional API-key auth for programmatic clients (off unless turned on).
   STT_AUTH_ENABLED: ${STT_AUTH_ENABLED:-false}
+  STT_AUTH_DEMO_MODE: ${STT_AUTH_DEMO_MODE:-true}
   STT_API_KEYS: ${STT_API_KEYS:-}
   STT_WHISPER_MODEL: ${STT_WHISPER_MODEL:-small}
   STT_DEVICE: ${STT_DEVICE:-cpu}

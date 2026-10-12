@@ -90,6 +90,15 @@ show.
 - API keys keep working alongside cookies: the console is one client among
   others.
 
+The login page asks `GET /v1/auth/config` before it claims anything. When the
+server reports **demo mode** (and only then), it renders a panel with a single
+**Use demo credentials** button: the username, plus the password *if* the
+deployment still runs on the shipped development default. On a deployment with
+a generated password the button fills the username only and the copy names
+`STT_UI_PASSWORD` in `.env` — the value is not sent to the browser, so it
+cannot be filled in for you. Nothing is assumed: an unreachable config endpoint
+means no claim and no panel. See `docs/deployment.md` for the switch.
+
 ## Live transcription
 
 While the microphone is open, the panel shows what the local model is hearing.

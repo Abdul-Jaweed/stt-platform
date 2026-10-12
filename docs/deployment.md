@@ -144,12 +144,33 @@ is deliberate — a deployment should not come up on a known default.
 | `STT_LOG_LEVEL` | `INFO` | log verbosity |
 | `STT_MLFLOW_ENABLED` | `false` | log evaluations to MLflow |
 | `STT_AUTH_ENABLED` / `STT_API_KEYS` | off | API keys for programmatic clients (`key:tenant` pairs) |
+| `STT_AUTH_DEMO_MODE` | `true` | the login page's demo panel (see below) |
 
 > **`STT_MAX_SYNC_DURATION_S=0` and evaluations.** Setting it to `0` forces
 > every upload down the durable async path, which is useful for exercising the
 > worker — but an evaluation transcribes each clip through the *synchronous*
 > path, and `0` makes that path reject every clip (`AUDIO_TOO_LONG`). Keep a
 > positive value if you intend to run evaluations.
+
+### The login page's demo panel
+
+`STT_AUTH_DEMO_MODE` controls one thing: whether the login page offers a
+**Use demo credentials** button and a short note. It is a convenience for a
+local stack, and it is deliberately narrow:
+
+- It fills the username (default `stt`) always, and the **password only when
+  the working password *is* the published development default**. `./launch.sh`
+  generates a random password on first run, so this stack's panel fills the
+  username and points at `STT_UI_PASSWORD` in `.env` — the value is never sent
+  to a browser.
+- `STT_ENVIRONMENT=production` forces it off, whatever the setting says, on
+  top of the guard that already refuses the development defaults there.
+- It cannot bypass anything: the panel is a *form filler* for the same
+  `POST /v1/auth/login` the keyboard uses. There is no demo token, no demo
+  session, no alternate code path.
+
+Turn it off (`STT_AUTH_DEMO_MODE=false`) for any deployment other people can
+reach, and restart: `./launch.sh restart`.
 
 ### Managed providers
 

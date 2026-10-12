@@ -307,6 +307,11 @@ export interface SessionInfo {
 export interface AuthConfig {
   ui_auth_enabled: boolean;
   dev_credentials: boolean;
+  /** The login page's demo panel. Off in production, whatever the setting. */
+  demo_mode: boolean;
+  demo_username: string | null;
+  /** Only ever the published development default — never a generated secret. */
+  demo_password: string | null;
 }
 
 export interface LoginResponse {

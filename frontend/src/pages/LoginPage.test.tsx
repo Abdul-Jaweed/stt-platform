@@ -149,11 +149,73 @@ test("says nothing about default credentials when the deployment uses real ones"
 });
 
 test("admits the development defaults only while they are actually in force", async () => {
-  server.use(meUnauthorized(), authConfigHandler(true));
+  // The old hint text is gone: the panel carries the admission now, and it
+  // may only appear when the server says demo mode is on *and* it published
+  // credentials that actually work.
+  server.use(
+    meUnauthorized(),
+    authConfigHandler(true, true, {
+      demo_mode: true,
+      demo_username: "stt",
+      demo_password: "stt",
+    }),
+  );
 
   renderApp("/login", <AppWithLogin />);
 
   expect(
-    await screen.findByText(/development default credentials/i),
+    await screen.findByText(/shipped development password/i),
   ).toBeInTheDocument();
+});
+
+test("one click fills the published demo credentials", async () => {
+  server.use(
+    meUnauthorized(),
+    authConfigHandler(true, true, {
+      demo_mode: true,
+      demo_username: "stt",
+      demo_password: "stt",
+    }),
+  );
+
+  renderApp("/login", <AppWithLogin />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: /use demo credentials/i }),
+  );
+
+  expect(screen.getByLabelText(/username/i)).toHaveValue("stt");
+  expect(screen.getByLabelText(/^password$/i)).toHaveValue("stt");
+});
+
+test("a generated password is never filled — the panel says where it lives", async () => {
+  server.use(
+    meUnauthorized(),
+    authConfigHandler(false, true, {
+      demo_mode: true,
+      demo_username: "stt",
+      demo_password: null,
+    }),
+  );
+
+  renderApp("/login", <AppWithLogin />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: /use demo credentials/i }),
+  );
+
+  expect(screen.getByLabelText(/username/i)).toHaveValue("stt");
+  expect(screen.getByLabelText(/^password$/i)).toHaveValue("");
+  expect(screen.getByText(/STT_UI_PASSWORD/)).toBeInTheDocument();
+});
+
+test("no demo panel when demo mode is off", async () => {
+  server.use(meUnauthorized(), authConfigHandler(false));
+
+  renderApp("/login", <AppWithLogin />);
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: /use demo credentials/i }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByText(/development default credentials/i)).not.toBeInTheDocument();
 });

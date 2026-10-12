@@ -36,6 +36,10 @@ FORWARDED = [
     "STT_OTEL_ENABLED",
     "STT_OTEL_EXPORTER",
     "STT_OTEL_ENDPOINT",
+    # The login page's demo panel: on by default for the local stack, and
+    # off for anything others can reach - so a deployment has to be able to
+    # say so from .env, not by rebuilding the frontend.
+    "STT_AUTH_DEMO_MODE",
 ]
 
 

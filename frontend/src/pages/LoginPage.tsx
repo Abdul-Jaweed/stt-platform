@@ -2,14 +2,17 @@ import {
   ArrowRight,
   Eye,
   EyeSlash,
+  Info,
+  Key,
   SignIn,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useApi } from "../api/context";
+import type { AuthConfig } from "../api/types";
 import { useSession } from "../auth/context";
 import BrandMark from "../components/BrandMark";
 import ThemeToggle from "../components/ThemeToggle";
@@ -37,10 +40,11 @@ export default function LoginPage() {
     username?: string;
     password?: string;
   }>({});
-  // null = not answered yet. The hint below must not guess: claiming the
+  // null = not answered yet. The panel below must not guess: claiming the
   // development defaults are in use when they are not is both wrong and a
   // small leak, and a deployment with generated credentials would see it.
-  const [devCredentials, setDevCredentials] = useState<boolean | null>(null);
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const api = useApi();
 
   const next = safeNext(params.get("next"));
@@ -49,17 +53,30 @@ export default function LoginPage() {
     let cancelled = false;
     void api
       .getAuthConfig()
-      .then((config) => {
-        if (!cancelled) setDevCredentials(config.dev_credentials);
+      .then((answer) => {
+        if (!cancelled) setConfig(answer);
       })
       .catch(() => {
         // No answer means no claim: silence is the safe default here.
-        if (!cancelled) setDevCredentials(false);
+        if (!cancelled) setConfig(null);
       });
     return () => {
       cancelled = true;
     };
   }, [api]);
+
+  /**
+   * Fill what the server published. The password is only ever what the
+   * server sent back — the published development default — and it sends
+   * none at all when the deployment runs on a generated one.
+   */
+  function fillDemoCredentials() {
+    if (!config?.demo_username) return;
+    setUsername(config.demo_username);
+    setPassword(config.demo_password ?? "");
+    setFieldErrors({});
+    passwordRef.current?.focus();
+  }
 
   if (status === "ready" && authenticated) {
     return <Navigate to={next} replace />;
@@ -131,6 +148,7 @@ export default function LoginPage() {
               <input
                 className="input"
                 name="password"
+                ref={passwordRef}
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 value={password}
@@ -161,12 +179,38 @@ export default function LoginPage() {
             {submitting ? "Signing in…" : "Sign in"}
           </button>
 
-          {devCredentials === true && (
-            <p className="hint auth-hint">
-              Development default credentials are <code>stt</code> /{" "}
-              <code>stt</code>. Change them before deploying — the server
-              refuses the default once it runs in production mode.
-            </p>
+          {config?.demo_mode && (
+            <div className="demo-access">
+              <p className="hint auth-hint">
+                <Info size={16} aria-hidden="true" />
+                <span>
+                  Local demo access — intended for development on this
+                  machine, not for a deployment other people can reach.
+                </span>
+              </p>
+              <button
+                type="button"
+                className="button"
+                onClick={fillDemoCredentials}
+              >
+                <Key size={16} weight="bold" aria-hidden="true" />
+                Use demo credentials
+              </button>
+              {config.demo_password ? (
+                <p className="hint">
+                  Fills <code>{config.demo_username}</code> and the shipped
+                  development password. Change both before deploying — the
+                  server refuses the default once it runs in production mode.
+                </p>
+              ) : (
+                <p className="hint">
+                  Fills the username. The password is{" "}
+                  <code>STT_UI_PASSWORD</code> in this deployment&apos;s{" "}
+                  <code>.env</code> — <code>./launch.sh</code> prints it on
+                  first start, and it is never sent to the browser.
+                </p>
+              )}
+            </div>
           )}
           <p className="hint">
             <Link to="/">Back to the overview</Link>

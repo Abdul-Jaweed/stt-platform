@@ -10,6 +10,7 @@ import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 
+import type { AuthConfig } from "../api/types";
 import { createApiClient } from "../api/client";
 import { ApiProvider } from "../api/context";
 import { SessionProvider } from "../auth/context";
@@ -39,11 +40,19 @@ export function meHandler(body: object = SESSION_AUTHENTICATED) {
 }
 
 /** `/v1/auth/config`: what the login page asks before anyone has a session. */
-export function authConfigHandler(devCredentials = false, uiAuthEnabled = true) {
+export function authConfigHandler(
+  devCredentials = false,
+  uiAuthEnabled = true,
+  demo: Partial<AuthConfig> = {},
+) {
   return http.get(`${BASE}/v1/auth/config`, () =>
     HttpResponse.json({
       ui_auth_enabled: uiAuthEnabled,
       dev_credentials: devCredentials,
+      demo_mode: false,
+      demo_username: null,
+      demo_password: null,
+      ...demo,
     }),
   );
 }

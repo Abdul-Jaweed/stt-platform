@@ -49,18 +49,38 @@ def _client_key(request: Request, username: str) -> str:
     return f"{host}:{username.lower()}"
 
 
+def _demo_fields(settings: Settings) -> dict[str, object]:
+    """What the login page may advertise — and nothing more.
+
+    Demo mode is an explicit switch (``STT_AUTH_DEMO_MODE``) that production
+    forces off: the panel makes a local stack pleasant to log into, and must
+    never hand out credentials on a deployment others can reach. The password
+    travels only when it *is* the published development default; a generated
+    one is left for the operator to find in ``.env``.
+    """
+    if not settings.auth_demo_mode or settings.environment == "production":
+        return {"demo_mode": False}
+    fillable = uses_development_credentials(settings)
+    return {
+        "demo_mode": True,
+        "demo_username": settings.ui_username,
+        "demo_password": settings.ui_password if fillable else None,
+    }
+
+
 @router.get("/config", response_model=AuthConfig)
 def config(request: Request) -> AuthConfig:
     """Public: the login page needs this before anyone has a session.
 
-    It answers whether login is required at all and whether the development
-    defaults are still in force. Neither answer is a secret, and neither
-    reveals a credential.
+    It answers whether login is required at all, whether the development
+    defaults are still in force, and whether the demo panel applies. No
+    answer here reveals a credential that is not already public.
     """
     settings = _settings(request)
     return AuthConfig(
         ui_auth_enabled=settings.ui_auth_enabled,
         dev_credentials=uses_development_credentials(settings),
+        **_demo_fields(settings),
     )
 
 

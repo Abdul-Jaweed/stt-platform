@@ -184,3 +184,43 @@ report with A–G sections and an honest passed/failed/blocked/not-run table.
   possible — and shipping an unpinned image would have broken the repo's
   own convention. The documented `docker run … jaegertracing/all-in-one`
   recipe covers local trace UI without that dishonesty.
+
+### S3 — OpenAPI, generated and complete ✅
+
+- `docs/openapi.json` (16 paths), written by `scripts/export_openapi.py`,
+  compared against the live schema by a drift test: regenerate in the same
+  commit as any route change or the suite fails.
+- Two more tests make the contract two-way: the pinned HTTP surface must
+  equal the mounted routes, and the schema must equal that surface. The
+  streaming socket cannot appear in OpenAPI at all, so it is pinned against
+  the route table plus `docs/api.md` and `docs/streaming.md`.
+- FastAPI 0.133 keeps included routers lazy (`_IncludedRouter` /
+  `effective_candidates()`): the first version of the completeness test
+  walked `app.routes`, found no `APIRoute`s and proved nothing. The
+  flattening helper says so in its docstring.
+- `docs/api.md` gained the rows it was missing (DELETE job, four auth
+  routes, three evaluation routes) and an OpenAPI section: spec path,
+  `/docs` and `/redoc` on the API origin, regeneration, and why the socket
+  is absent from the schema.
+
+### S4 — demo login, safely ✅
+
+- One explicit switch, `STT_AUTH_DEMO_MODE` (default `true`), now drives the
+  login page's panel. `GET /v1/auth/config` adds `demo_mode`,
+  `demo_username` and `demo_password` — the password only when the working
+  password *is* the published development default. A generated password is
+  never sent; the panel names `STT_UI_PASSWORD` instead.
+- Production forces the panel off whatever the setting says, on top of the
+  existing guard that refuses the development defaults there. The panel is a
+  form filler for the ordinary login route: no demo token, no demo session,
+  no second code path.
+- Frontend: a bordered panel under the submit button, the button filling
+  username + password (or username only, focusing the password field), plus
+  copy that says plainly that this is for a local machine. Component tests
+  cover both fill paths and the off state; the old `stt`/`stt` hint text is
+  gone, so nothing advertises credentials outside the switch.
+- Live, on the deployed stack: `STT_ENVIRONMENT=production` (compose's
+  default!) means the panel is absent by design — verified in the DOM on
+  `/login` — while the deployed bundle demonstrably carries the panel code
+  and the live `/v1/auth/config` answers with the new shape. The dev flow
+  (`STT_ENVIRONMENT=local`) shows the panel.

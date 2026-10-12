@@ -264,10 +264,12 @@ def test_a_password_hash_setting_replaces_the_plaintext_one(make_client):
 
 
 def test_auth_config_is_public_and_reports_the_development_defaults(make_client):
-    """The login page asks this to decide whether to show the dev hint.
+    """The login page asks this to decide whether to show the demo panel.
 
-    It carries no secret — two booleans — and it must be reachable without a
-    session, because it is needed *before* anyone has one.
+    It must be reachable without a session, because it is needed *before*
+    anyone has one. On the shipped defaults it also carries the demo panel's
+    fields — which are the published development credentials, not a secret;
+    ``test_a_generated_password_is_named_but_never_sent`` pins the other half.
     """
     client = make_client()
 
@@ -275,8 +277,13 @@ def test_auth_config_is_public_and_reports_the_development_defaults(make_client)
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {"ui_auth_enabled": True, "dev_credentials": True}
-    assert "stt" not in response.text.replace("\"dev_credentials\"", "")
+    assert body == {
+        "ui_auth_enabled": True,
+        "dev_credentials": True,
+        "demo_mode": True,
+        "demo_username": "stt",
+        "demo_password": "stt",
+    }
 
 
 def test_auth_config_stops_claiming_development_credentials_once_they_change(make_client):
@@ -286,3 +293,58 @@ def test_auth_config_stops_claiming_development_credentials_once_they_change(mak
 
     assert body["dev_credentials"] is False
     assert body["ui_auth_enabled"] is True
+
+
+# --------------------------------------------------------------------- #
+# demo mode: the login page may advertise credentials, under a switch
+# --------------------------------------------------------------------- #
+
+def test_demo_mode_offers_the_development_defaults_when_they_work(make_client):
+    """Outside production, on the shipped defaults, the panel can fill
+    both fields — that is what makes a fresh checkout pleasant to use."""
+    config = make_client().get("/v1/auth/config").json()
+
+    assert config["demo_mode"] is True
+    assert config["demo_username"] == "stt"
+    assert config["demo_password"] == "stt"
+
+
+def test_a_generated_password_is_named_but_never_sent(make_client):
+    """The whole point of the switch: a real deployment's password never
+    travels to a page nobody has authenticated on yet."""
+    from stt_platform.services.auth import hash_password
+
+    secret = "a-generated-password-nobody-should-see"
+    client = make_client(ui_password_hash=hash_password(secret))
+    response = client.get("/v1/auth/config")
+
+    config = response.json()
+    assert config["demo_mode"] is True
+    assert config["demo_username"] == "stt"
+    assert config["demo_password"] is None
+    assert secret not in response.text
+
+
+def test_demo_mode_off_hides_every_demo_field(make_client):
+    config = make_client(auth_demo_mode=False).get("/v1/auth/config").json()
+
+    assert config["demo_mode"] is False
+    assert config["demo_username"] is None
+    assert config["demo_password"] is None
+
+
+def test_production_forces_demo_mode_off_whatever_the_setting_says(make_client):
+    from stt_platform.services.auth import hash_password
+
+    client = make_client(
+        environment="production",
+        ui_username="ops",
+        ui_password_hash=hash_password("a-long-production-password"),
+        session_cookie_secure=True,
+        auth_demo_mode=True,
+    )
+    config = client.get("/v1/auth/config").json()
+
+    assert config["demo_mode"] is False
+    assert config["demo_username"] is None
+    assert config["demo_password"] is None

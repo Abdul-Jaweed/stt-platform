@@ -43,3 +43,11 @@ class AuthConfig(BaseModel):
 
     ui_auth_enabled: bool
     dev_credentials: bool
+    #: Demo panel state. ``demo_mode`` is false in production and whenever
+    #: the operator turned it off; the two fields below are only populated
+    #: inside demo mode.
+    demo_mode: bool = False
+    demo_username: str | None = None
+    #: Present only when the working password *is* the published
+    #: development default. A generated secret never travels here.
+    demo_password: str | None = None

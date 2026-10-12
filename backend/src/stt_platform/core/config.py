@@ -135,6 +135,11 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     #: Failed logins per minute, per (address, account). 0 disables it.
     login_max_attempts_per_minute: int = 10
+    #: The login page's demo panel: fills the username, and the password too
+    #: when it is the published development default — a generated password is
+    #: named, never sent. Forced off in production whatever this says; turn it
+    #: off for any deployment other people can reach.
+    auth_demo_mode: bool = True
     # Evaluation (Phase 6): where datasets and their audio live, how large a
     # run may be, and where MLflow keeps the record of it. MLflow logging is
     # best-effort and time-bounded: a dead tracking server downgrades the

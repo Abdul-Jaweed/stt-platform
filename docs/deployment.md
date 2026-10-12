@@ -280,9 +280,19 @@ for `gpu` without the NVIDIA container runtime. Install it, or start on CPU.
 **Jobs stay `QUEUED`.** The worker is not running or cannot reach Temporal:
 `docker compose ps worker` and `./launch.sh logs worker`.
 
-**The console loads but every call fails.** The console proxies `/v1` to the
-API container; if `stt-api` is unhealthy, requests fail with 502. Check
-`curl http://127.0.0.1:8200/v1/health/ready`.
+**The console loads but every call fails with 502 — including sign-in.** Two
+different causes, told apart in one command:
+
+- `stt-api` is unhealthy. Check `curl http://127.0.0.1:8200/v1/health/ready`.
+- The API answers fine on `:8200` but the console still 502s, and
+  `./launch.sh logs frontend` shows
+  `connect() failed (111: Connection refused) ... upstream "http://172.x.x.x:8200"`.
+  nginx resolves `proxy_pass` **once, when it starts**, and the API container was
+  recreated since (any image or env change gives it a new address), so nginx is
+  still calling the old one. `./launch.sh restart` fixes it immediately. Images
+  built after this fix declare a `resolver` and proxy through a variable, so
+  nginx re-resolves `api` every 10s and the stale address cannot happen again —
+  if you are on an older image, `./launch.sh rebuild` picks the fix up.
 
 **Windows: `localhost` hangs.** Use `127.0.0.1` explicitly — on Windows,
 `localhost` can resolve to `::1` while the published port is IPv4-only.

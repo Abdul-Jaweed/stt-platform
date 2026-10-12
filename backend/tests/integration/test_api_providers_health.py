@@ -38,6 +38,28 @@ def test_providers_listing_includes_capabilities(tmp_path):
         app.state.engine.dispose()
 
 
+def test_providers_listing_carries_the_platforms_own_caps(tmp_path):
+    """A client can tell "this deployment" from "this provider".
+
+    The provider limits are the vendor's numbers; these are ours. The UI
+    explains a refusal with both, so both must arrive from the server rather
+    than being re-typed in the frontend.
+    """
+    app, client = _client(tmp_path, DEAD_DB_URL)
+    try:
+        limits = client.get("/v1/providers").json()["limits"]
+        settings = app.state.settings
+        assert limits == {
+            "max_upload_bytes": settings.max_upload_bytes,
+            "max_sync_duration_s": settings.max_sync_duration_s,
+            "max_async_duration_s": settings.max_async_duration_s,
+            "max_live_preview_duration_s": settings.max_live_preview_duration_s,
+        }
+    finally:
+        client.close()
+        app.state.engine.dispose()
+
+
 def test_health_live(tmp_path):
     app, client = _client(tmp_path, DEAD_DB_URL)
     try:

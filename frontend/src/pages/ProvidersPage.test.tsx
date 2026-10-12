@@ -3,11 +3,19 @@ import { http, HttpResponse } from "msw";
 
 import { createApiClient } from "../api/client";
 import { ApiProvider } from "../api/context";
+import type { PlatformLimits } from "../api/types";
 import type { ProviderInfo } from "../api/types";
 import { server } from "../test/server";
 import ProvidersPage from "./ProvidersPage";
 
 const BASE = "http://127.0.0.1:8200";
+
+const limits: PlatformLimits = {
+  max_upload_bytes: 104857600,
+  max_sync_duration_s: 180,
+  max_async_duration_s: 14400,
+  max_live_preview_duration_s: 120,
+};
 
 const providers: ProviderInfo[] = [
   {
@@ -44,6 +52,8 @@ const providers: ProviderInfo[] = [
       async_processing: true,
       confidence_scores: true,
       formats: ["wav"],
+      max_file_bytes: 3 * 1024 ** 3,
+      max_duration_s: 3600,
     },
     health: { status: "degraded", detail: "rate limited" },
   },
@@ -52,7 +62,7 @@ const providers: ProviderInfo[] = [
 test("providers table shows capability flags and health", async () => {
   server.use(
     http.get(`${BASE}/v1/providers`, () =>
-      HttpResponse.json({ providers }),
+      HttpResponse.json({ providers, limits }),
     ),
   );
 
@@ -86,7 +96,7 @@ test("provider failure renders an error with retry", async () => {
           { status: 500 },
         );
       }
-      return HttpResponse.json({ providers });
+      return HttpResponse.json({ providers, limits });
     }),
   );
 
@@ -103,4 +113,33 @@ test("provider failure renders an error with retry", async () => {
   expect(
     await screen.findByRole("row", { name: /deepgram/i }),
   ).toBeInTheDocument();
+});
+
+test("limits are shown the way the provider states them, or not at all", async () => {
+  server.use(
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({ providers, limits }),
+    ),
+  );
+
+  render(
+    <ApiProvider client={createApiClient(BASE)}>
+      <ProvidersPage />
+    </ApiProvider>,
+  );
+
+  // faster-whisper documents no file cap: the cell says so instead of
+  // pretending zero or infinity.
+  const localRow = await screen.findByRole("row", { name: /faster-whisper/i });
+  expect(within(localRow).getByText("no limit documented")).toBeInTheDocument();
+
+  // Deepgram's 3 GB is a vendor number, printed as one.
+  const cloudRow = screen.getByRole("row", { name: /deepgram/i });
+  expect(within(cloudRow).getByText("3.0 GB")).toBeInTheDocument();
+
+  // ...and the deployment's own caps are stated next to the table, distinct
+  // from the providers'.
+  const note = screen.getByText(/this deployment accepts uploads up to/i);
+  expect(note).toHaveTextContent("100.0 MB");
+  expect(note).toHaveTextContent("4:00:00.0");
 });

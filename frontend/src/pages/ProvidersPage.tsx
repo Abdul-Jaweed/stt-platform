@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
-import type { ProviderInfo } from "../api/types";
-import { formatDuration } from "../lib/format";
+import type { PlatformLimits, ProviderInfo } from "../api/types";
+import { formatBytes, formatDuration } from "../lib/format";
 
 interface LoadError {
   code: string;
@@ -31,13 +31,16 @@ function Capability({ value }: { value: boolean }) {
 export default function ProvidersPage() {
   const api = useApi();
   const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
+  const [limits, setLimits] = useState<PlatformLimits | null>(null);
   const [error, setError] = useState<LoadError | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     setProviders(null);
     try {
-      setProviders(await api.getProviders());
+      const directory = await api.getProviderDirectory();
+      setProviders(directory.providers);
+      setLimits(directory.limits);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -83,6 +86,7 @@ export default function ProvidersPage() {
             <th>Diarization</th>
             <th>Streaming</th>
             <th>Formats</th>
+            <th>Max file</th>
             <th>Max duration</th>
           </tr>
         </thead>
@@ -108,14 +112,29 @@ export default function ProvidersPage() {
                 </td>
               <td>{provider.capabilities.formats.join(", ")}</td>
               <td>
+                {provider.capabilities.max_file_bytes != null
+                  ? formatBytes(provider.capabilities.max_file_bytes)
+                  : "no limit documented"}
+              </td>
+              <td>
                 {provider.capabilities.max_duration_s != null
                   ? formatDuration(provider.capabilities.max_duration_s)
-                  : "—"}
+                  : "no limit documented"}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {limits && (
+        <p className="hint providers-limits-note">
+          {`Rows are each provider's own documented limits, enforced before
+          any bytes leave this machine. This deployment accepts uploads up to
+          ${formatBytes(limits.max_upload_bytes)} and jobs up to
+          ${formatDuration(limits.max_async_duration_s)}; the first
+          ${formatDuration(limits.max_sync_duration_s)} of audio is
+          transcribed while you wait.`}
+        </p>
+      )}
     </section>
   );
 }

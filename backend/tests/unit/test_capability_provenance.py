@@ -31,6 +31,7 @@ def test_deepgram_provenance():
         "diarization": "verified",
         "confidence_scores": "verified",
         "language_detection": "verified",
+        "max_file_bytes": "documented",
     }
 
 
@@ -40,6 +41,8 @@ def test_elevenlabs_provenance():
         "word_timestamps": "verified",
         "language_detection": "verified",
         "diarization": "verified",
+        "max_file_bytes": "documented",
+        "max_duration_s": "documented",
     }
 
 
@@ -50,6 +53,7 @@ def test_sarvam_provenance():
         "segment_timestamps": "verified",
         "diarization": "verified",
         "language_detection": "verified",
+        "max_duration_s": "documented",
     }
 
 
@@ -65,3 +69,29 @@ def test_unverified_capabilities_are_not_claimed():
     eleven = ElevenLabsProvider(settings=Settings()).capabilities()
     assert eleven.confidence_scores is False
     assert "confidence_scores" not in eleven.capability_sources
+
+
+def test_declared_limits_are_the_vendors_own_numbers():
+    """Every populated limit is a number a vendor page states, and says so.
+
+    Sources checked 2026-10-12, linked in ``docs/providers.md``:
+    Deepgram pre-recorded ("File size: Maximum 2 GB"), ElevenLabs Speech to
+    Text ("Maximum file size: 3 GB", "Maximum duration: 10 hours"), Sarvam
+    Batch API ("up to 2 hours" per file).
+    """
+    deepgram = DeepgramProvider(settings=Settings()).capabilities()
+    assert deepgram.max_file_bytes == 2 * 1024**3
+    # Pre-recorded audio documents no duration limit, so none is claimed.
+    assert deepgram.max_duration_s is None
+    assert deepgram.capability_sources["max_file_bytes"] == "documented"
+
+    eleven = ElevenLabsProvider(settings=Settings()).capabilities()
+    assert eleven.max_file_bytes == 3 * 1024**3
+    assert eleven.max_duration_s == 10 * 3600.0
+    assert eleven.capability_sources["max_duration_s"] == "documented"
+
+    sarvam = SarvamProvider(settings=Settings()).capabilities()
+    assert sarvam.max_duration_s == 2 * 3600.0
+    # No file-size limit is documented for the batch API: never invented.
+    assert sarvam.max_file_bytes is None
+    assert sarvam.capability_sources["max_duration_s"] == "documented"

@@ -85,6 +85,10 @@ class DeepgramProvider:
             async_processing=False,
             confidence_scores=True,
             formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
+            # Vendor docs (see docs/providers.md): "File size: Maximum 2 GB"
+            # for pre-recorded audio. No duration limit is documented there,
+            # so none is claimed.
+            max_file_bytes=2 * 1024**3,
             capability_sources={
                 # Live-verified 2026-10-11 (results/live_providers/result.json):
                 # 2 utterance segments, 25 words with confidence + speakers,
@@ -94,6 +98,7 @@ class DeepgramProvider:
                 "diarization": "verified",
                 "confidence_scores": "verified",
                 "language_detection": "verified",
+                "max_file_bytes": "documented",
             },
         )
 

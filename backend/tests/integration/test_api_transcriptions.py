@@ -28,6 +28,18 @@ class FlakyOnce(FakeProvider):
         return super().transcribe(request)
 
 
+class NarrowProvider(FakeProvider):
+    """Declares a duration cap far below the platform's own."""
+
+    def capabilities(self):
+        return super().capabilities().model_copy(
+            update={
+                "max_duration_s": 0.5,
+                "capability_sources": {"max_duration_s": "documented"},
+            }
+        )
+
+
 class Exploding(FakeProvider):
     def transcribe(self, request):
         raise RuntimeError("provider exploded")
@@ -214,3 +226,16 @@ def test_unhandled_provider_crash_is_500_internal(make_client, tmp_path):
     r = _upload(client, wav)
     assert r.status_code == 500
     assert r.json()["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_provider_duration_cap_rejected_422(make_client, tmp_path):
+    """The chosen provider's own limit is enforced before any vendor call."""
+    client = make_client(NarrowProvider())
+    wav = make_wav(tmp_path, seconds=1.0)
+
+    r = _upload(client, wav)
+
+    assert r.status_code == 422, r.text
+    error = r.json()["error"]
+    assert error["code"] == "AUDIO_TOO_LONG"
+    assert "fake" in error["message"]

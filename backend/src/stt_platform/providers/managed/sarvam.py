@@ -112,7 +112,12 @@ class SarvamProvider:
             batch=True,
             async_processing=True,
             confidence_scores=False,
-            formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
+            formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm", "aiff"],
+            # Vendor docs (see docs/providers.md): the Batch API accepts "up
+            # to 2 hours" per file; the 30 s cap belongs to the synchronous
+            # REST endpoint this adapter does not use. No file-size limit is
+            # documented for batch, so none is claimed.
+            max_duration_s=2 * 3600.0,
             capability_sources={
                 # Live-verified 2026-10-11 (results/live_providers/result.json):
                 # batch job 20261011_d506f859... Completed in ~20 s, 1 segment
@@ -122,6 +127,7 @@ class SarvamProvider:
                 "segment_timestamps": "verified",
                 "diarization": "verified",
                 "language_detection": "verified",
+                "max_duration_s": "documented",
             },
         )
 

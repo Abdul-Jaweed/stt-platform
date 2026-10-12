@@ -79,7 +79,13 @@ class ElevenLabsProvider:
             batch=True,
             async_processing=False,
             confidence_scores=False,
-            formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm"],
+            formats=["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "webm", "aiff"],
+            # Vendor docs (see docs/providers.md): "Files up to 3 GB", and
+            # "Maximum duration: 10 hours (standard mode)". The API reference
+            # also states a 5 GB ceiling for the upload endpoint; the
+            # conservative overview figure is the one displayed.
+            max_file_bytes=3 * 1024**3,
+            max_duration_s=10 * 3600.0,
             capability_sources={
                 # Live-verified 2026-10-11 (results/live_providers/result.json):
                 # 27 word timings with end > start, no per-word confidence
@@ -89,6 +95,8 @@ class ElevenLabsProvider:
                 "word_timestamps": "verified",
                 "language_detection": "verified",
                 "diarization": "verified",
+                "max_file_bytes": "documented",
+                "max_duration_s": "documented",
             },
         )
 

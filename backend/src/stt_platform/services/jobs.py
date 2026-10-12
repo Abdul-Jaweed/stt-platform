@@ -27,6 +27,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from stt_platform.audio.limits import check_provider_limits
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.domain.errors import (
@@ -53,6 +54,7 @@ from stt_platform.providers.base import (
 )
 from stt_platform.providers.registry import ProviderRegistry
 from stt_platform.schemas.jobs import JobFailure, JobRecord
+from stt_platform.schemas.providers import ProviderCapabilities
 from stt_platform.schemas.transcript import TranscriptResult
 from stt_platform.services.dispatch import dispatch_pending, workflow_id_for
 from stt_platform.services.retention import TERMINAL_STATUSES, delete_job_objects
@@ -246,6 +248,9 @@ class JobService:
                 self._settings,
                 max_duration_s=self._settings.max_async_duration_s,
             )
+            check_provider_limits(
+                info, provider.capabilities(), provider_id=provider.id
+            )
         except (AudioValidationError, UploadTooLarge, AudioTooLong) as exc:
             return self._fail(job_id, exc, retryable=False, scope=scope)
 
@@ -308,6 +313,18 @@ class JobService:
             # records CANCELLED, and ends. The caller can poll the job.
             return record
         raise InvalidTransition(record.status.value, JobStatus.CANCELLED.value)
+
+    def provider_limits(
+        self, provider_id: str | None
+    ) -> tuple[str, ProviderCapabilities]:
+        """The provider that will serve this request, and its declared limits.
+
+        Raises :class:`ProviderNotFound` exactly like ``provider_requires_async``
+        — callers that are answering an untrusted request must catch it and let
+        the create path produce the canonical 422.
+        """
+        provider = self._registry.get(provider_id)
+        return provider.id, provider.capabilities()
 
     def provider_requires_async(self, provider_id: str | None) -> bool:
         """True when the selected provider only has an asynchronous API."""
@@ -473,6 +490,9 @@ class JobService:
             self._repo.append_transition(job_id, JobStatus.VALIDATING, scope=scope)
             try:
                 info = validate_upload(audio_path, self._settings)
+                check_provider_limits(
+                    info, provider.capabilities(), provider_id=provider.id
+                )
             except (AudioValidationError, UploadTooLarge, AudioTooLong) as exc:
                 return self._fail(job_id, exc, retryable=False, scope=scope)
             metrics.record_upload_bytes(info.size_bytes)

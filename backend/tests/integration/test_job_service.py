@@ -230,3 +230,29 @@ def test_provider_contract_violation_fails_permanently(make_service, tmp_path):
     assert job.failure is not None
     assert job.failure.retryable is False
     assert job.failure.code == "PROVIDER_CONTRACT_VIOLATION"
+
+
+class NarrowProvider(FakeProvider):
+    """Declares a duration cap far below the platform's own."""
+
+    def capabilities(self):
+        return super().capabilities().model_copy(
+            update={
+                "max_duration_s": 0.5,
+                "capability_sources": {"max_duration_s": "documented"},
+            }
+        )
+
+
+def test_a_provider_duration_cap_fails_the_job(make_service, tmp_path):
+    """Defence in depth: the service checks too, so every entry point does."""
+    service, _repo = make_service(NarrowProvider())
+    wav = make_wav(tmp_path, seconds=1.0)
+
+    job = service.create_and_process(
+        audio_path=wav, provider_id=None, language=None, idempotency_key=None, scope="local"
+    )
+
+    assert job.status is JobStatus.FAILED
+    assert job.failure is not None and job.failure.code == "AUDIO_TOO_LONG"
+    assert "fake" in job.failure.message

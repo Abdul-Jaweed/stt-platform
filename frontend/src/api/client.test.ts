@@ -180,3 +180,24 @@ test("the stream URL keeps the API's origin and switches the scheme to ws", () =
     `${window.location.origin.replace(/^http/, "ws")}/v1/transcriptions/stream`,
   );
 });
+
+test("getProviderDirectory carries the deployment's own caps", async () => {
+  server.use(
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({
+        providers: [],
+        limits: {
+          max_upload_bytes: 104857600,
+          max_sync_duration_s: 180,
+          max_async_duration_s: 14400,
+          max_live_preview_duration_s: 120,
+        },
+      }),
+    ),
+  );
+
+  const directory = await client.getProviderDirectory();
+
+  expect(directory.limits.max_upload_bytes).toBe(104857600);
+  expect(directory.limits.max_async_duration_s).toBe(14400);
+});

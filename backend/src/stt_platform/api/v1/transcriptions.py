@@ -28,12 +28,14 @@ from fastapi import (
 from stt_platform.api.deps import get_service
 from stt_platform.api.ratelimit import enforce_rate_limit
 from stt_platform.api.security import get_scope
+from stt_platform.audio.limits import check_provider_limits
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import (
     AudioTooLong,
     AudioValidationError,
     InvalidRequest,
+    ProviderNotFound,
     StorageNotConfigured,
     UploadTooLarge,
 )
@@ -207,6 +209,15 @@ def create_transcription(
                 settings.max_async_duration_s if store is not None else None
             ),
         )
+        # The platform's caps are not the provider's: a file this platform
+        # happily stores may be past the chosen vendor's documented limit,
+        # and the refusal should name the vendor before any bytes leave.
+        try:
+            resolved_id, capabilities = service.provider_limits(provider or None)
+        except ProviderNotFound:
+            resolved_id, capabilities = None, None  # the create path owns this 422
+        if capabilities is not None:
+            check_provider_limits(info, capabilities, provider_id=resolved_id)
     except (AudioValidationError, UploadTooLarge, AudioTooLong):
         dest.unlink(missing_ok=True)
         raise

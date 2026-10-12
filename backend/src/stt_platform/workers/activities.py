@@ -25,6 +25,7 @@ from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session, sessionmaker
 from temporalio import activity
 
+from stt_platform.audio.limits import check_provider_limits
 from stt_platform.audio.validation import validate_upload
 from stt_platform.core.config import Settings
 from stt_platform.domain.errors import DomainError, InvalidTransition, ProviderError
@@ -242,10 +243,13 @@ class TranscriptionActivities:
 
             # Stored bytes are never trusted: re-validate content before
             # transcribing (a presigned upload may have placed anything).
-            validate_upload(
+            info = validate_upload(
                 source,
                 deps.settings,
                 max_duration_s=deps.settings.max_async_duration_s,
+            )
+            check_provider_limits(
+                info, provider.capabilities(), provider_id=provider.id
             )
 
             if isinstance(provider, AsyncProviderProtocol):

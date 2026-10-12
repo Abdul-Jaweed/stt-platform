@@ -188,6 +188,23 @@ export interface ProviderCapabilities {
   max_duration_s?: number | null;
 }
 
+/**
+ * The deployment's own caps — distinct from any provider's. Served by
+ * `GET /v1/providers` so the UI never re-types a number the backend enforces.
+ */
+export interface PlatformLimits {
+  max_upload_bytes: number;
+  max_sync_duration_s: number;
+  max_async_duration_s: number;
+  max_live_preview_duration_s: number;
+}
+
+/** `GET /v1/providers` in full: the directory plus this deployment's caps. */
+export interface ProviderDirectory {
+  providers: ProviderInfo[];
+  limits: PlatformLimits;
+}
+
 export interface ProviderHealth {
   status: "ok" | "degraded" | "unavailable" | string;
   detail?: string | null;

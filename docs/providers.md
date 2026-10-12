@@ -19,7 +19,7 @@ always present and is the default.
 | Default model | `large-v3-turbo` | `nova-3` | `scribe_v2` | `saaras:v4` |
 | Word timestamps | yes — *verified* | yes — *verified* | yes — *verified* | **no** (segment only) |
 | Segment timestamps | yes — *verified* | yes — *verified* | derived from word runs | yes — *verified* |
-| Diarization | no | yes — *verified* | yes — *documented* (requested, not yet exercised live) | yes — *verified* |
+| Diarization | no | yes — *verified* | yes — *verified* (2026-10-12 run) | yes — *verified* |
 | Word confidence | yes — *verified* | yes — *verified* | **no** — stays `None` | no |
 | Language detection | yes | yes — *verified* | yes — *verified* | yes — *verified* |
 | Cancel | — | — | — | **unsupported** (documented) |
@@ -33,6 +33,36 @@ endpoints only; see `docs/live-provider-verification.md` for the numbers,
 the five defects that run uncovered, and the evidence paths. The flips are
 pinned by `tests/unit/test_capability_provenance.py`; a capability stays
 `documented` until a live run exercises it (ElevenLabs diarization today).
+
+## Declared limits (and where each number comes from)
+
+Two different sets of caps apply to every upload, and the UI shows both:
+
+1. **This deployment's** — `STT_MAX_UPLOAD_BYTES` (100 MB),
+   `STT_MAX_SYNC_DURATION_S` (180 s, transcribed while you wait), and
+   `STT_MAX_ASYNC_DURATION_S` (14400 s = 4 h, the ceiling for any job).
+   Served to clients on `GET /v1/providers` as `limits`.
+2. **The chosen provider's** — the vendor's own documented numbers, carried
+   in `ProviderCapabilities.max_file_bytes` / `max_duration_s`. Both are
+   enforced *before* a vendor call (`audio/limits.py::check_provider_limits`,
+   wired into the API pre-flight, `JobService.create_async`, the synchronous
+   `_process`, and the worker's `transcribe` activity), so an over-limit file
+   is refused with the vendor's name in the message instead of failing in
+   the cloud. `None` means the vendor documents no such limit — the platform
+   then refuses nothing on its behalf.
+
+| Provider | Max file | Max duration | Source (checked 2026-10-12) |
+|---|---|---|---|
+| `faster-whisper` | none | none | local engine — only the deployment's caps apply |
+| `deepgram` | 2 GB | none | <https://developers.deepgram.com/docs/pre-recorded-audio> — "File size: Maximum 2 GB"; no duration limit is documented for pre-recorded audio |
+| `elevenlabs` | 3 GB | 10 h | <https://elevenlabs.io/docs/overview/capabilities/speech-to-text> — "Files up to 3 GB", "Maximum duration: 10 hours (standard mode)". The endpoint reference also states a 5 GB ceiling for `file` uploads; the conservative overview figure is what the API advertises |
+| `sarvam` | none | 2 h | <https://docs.sarvam.ai/api-reference-docs/speech-to-text/apis/overview> — "Batch API: max file duration 2 hours per file". The 30 s cap belongs to the synchronous REST endpoint this adapter does not use; no batch file-size limit is documented |
+
+Every populated value carries `capability_sources[...] = "documented"` and is
+pinned by `backend/tests/unit/test_capability_provenance.py`; the enforcement
+itself is pinned by `test_provider_limits.py`, the API pre-flight test in
+`test_api_transcriptions.py`, and a service-level test in
+`test_job_service.py`.
 
 ## Configuration
 

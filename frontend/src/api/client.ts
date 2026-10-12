@@ -10,6 +10,7 @@ import type {
   ProviderInfo,
   SessionInfo,
   TranscriptResult,
+  ProviderDirectory,
 } from "./types";
 
 export interface CreateTranscriptionInput {
@@ -59,6 +60,8 @@ export interface ApiClient {
   retry(id: string): Promise<JobRecord>;
   cancel(id: string): Promise<JobRecord>;
   getProviders(): Promise<ProviderInfo[]>;
+  /** Providers plus the deployment's own caps, in one call. */
+  getProviderDirectory(): Promise<ProviderDirectory>;
   getHealth(): Promise<{ status: string }>;
   /** Who the caller is; a 401 means the server wants a login. */
   getSession(): Promise<SessionInfo>;
@@ -172,9 +175,11 @@ export function createApiClient(baseUrl: string): ApiClient {
     cancel: (id) => post<JobRecord>(`${jobPath(id)}/cancel`),
 
     async getProviders() {
-      const data = await get<{ providers: ProviderInfo[] }>("/v1/providers");
+      const data = await get<ProviderDirectory>("/v1/providers");
       return data.providers;
     },
+
+    getProviderDirectory: () => get<ProviderDirectory>("/v1/providers"),
 
     getHealth: () => get<{ status: string }>("/v1/health/ready"),
 

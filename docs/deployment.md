@@ -140,6 +140,7 @@ is deliberate — a deployment should not come up on a known default.
 | `STT_DEVICE` | `cpu` | `cpu` or `cuda` (the GPU override sets `cuda`) |
 | `STT_COMPUTE_TYPE` | `int8` | `int8` on CPU, `float16` on GPU |
 | `STT_MAX_SYNC_DURATION_S` | `180` | uploads shorter than this are transcribed inside the request; longer ones become durable jobs the worker runs |
+| `STT_CHUNK_SECONDS` | `600` | local long-audio chunking: files longer than this are decoded once and transcribed slice by slice, with every slice's timestamps shifted back onto the original timeline; `0` disables |
 | `STT_SESSION_COOKIE_SECURE` | `false` | set `true` behind TLS (production sets it automatically when unset) |
 | `STT_LOG_LEVEL` | `INFO` | log verbosity |
 | `STT_MLFLOW_ENABLED` | `false` | log evaluations to MLflow |

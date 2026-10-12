@@ -53,7 +53,7 @@ Two different sets of caps apply to every upload, and the UI shows both:
 
 | Provider | Max file | Max duration | Source (checked 2026-10-12) |
 |---|---|---|---|
-| `faster-whisper` | none | none | local engine — only the deployment's caps apply |
+| `faster-whisper` | none | none | local engine — no vendor limit; long input is chunked locally (`STT_CHUNK_SECONDS`) instead of a single pass |
 | `deepgram` | 2 GB | none | <https://developers.deepgram.com/docs/pre-recorded-audio> — "File size: Maximum 2 GB"; no duration limit is documented for pre-recorded audio |
 | `elevenlabs` | 3 GB | 10 h | <https://elevenlabs.io/docs/overview/capabilities/speech-to-text> — "Files up to 3 GB", "Maximum duration: 10 hours (standard mode)". The endpoint reference also states a 5 GB ceiling for `file` uploads; the conservative overview figure is what the API advertises |
 | `sarvam` | none | 2 h | <https://docs.sarvam.ai/api-reference-docs/speech-to-text/apis/overview> — "Batch API: max file duration 2 hours per file". The 30 s cap belongs to the synchronous REST endpoint this adapter does not use; no batch file-size limit is documented |
@@ -151,3 +151,26 @@ provider's cancel where it exists and always records `CANCELLED`.
 3. Unit tests with synthesized fixtures under respx (no paid calls) plus,
    where the provider is async, a live-Temporal integration test.
 4. Add a `-m live_provider` test for the paid verification run.
+
+## Long audio: local chunking
+
+A managed provider's duration cap is enforced before the call; the local
+engine has no vendor limit at all. Past `STT_CHUNK_SECONDS` (0 = off, the
+compose stack ships 600) the local provider chunks a long file itself instead
+of handing the model one multi-hour decode:
+
+- the file is probed with ffprobe and decoded exactly once
+  (`faster_whisper.audio.decode_audio`, 16 kHz mono float32);
+- it is sliced at exact 16 kHz sample offsets;
+- each slice is transcribed with the same engine parameters as any other
+  audio (`vad_filter=True`, word timestamps, no cross-slice conditioning);
+- every slice's transcript is shifted back onto the original timeline by its
+  own offset (`domain/timeline.py::shift_segments`) — timestamps are never
+  re-derived, and no slice is ever re-timed from scratch;
+- a failing slice fails the whole job loudly, with the same error codes a
+  single pass would produce.
+
+**Seam behaviour (known, documented):** a word crossing a chunk boundary may
+be clipped or repeated — the boundary is a fixed sample offset, not a
+silence. Refining boundaries to silences is future work; the timestamps
+themselves are always exact.

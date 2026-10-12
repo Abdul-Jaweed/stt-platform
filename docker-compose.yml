@@ -36,6 +36,10 @@ x-backend-env: &backend-env
   # 0 forces the durable async path for every upload (useful to exercise the
   # worker, and to keep a slow model off the request thread).
   STT_MAX_SYNC_DURATION_S: ${STT_MAX_SYNC_DURATION_S:-180}
+  # Long audio (> this many seconds) is chunked inside the local provider:
+  # decoded once, sliced at exact sample offsets, every slice shifted back
+  # onto the original timeline. 0 disables chunking.
+  STT_CHUNK_SECONDS: ${STT_CHUNK_SECONDS:-600}
   STT_GPU_CONCURRENCY: ${STT_GPU_CONCURRENCY:-1}
   STT_MANAGED_CONCURRENCY: ${STT_MANAGED_CONCURRENCY:-4}
   # Observability (on by default; aim the endpoint at any OTLP/HTTP

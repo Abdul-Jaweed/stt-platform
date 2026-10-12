@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     #: One WebSocket frame may not exceed this many bytes of audio.
     stream_max_frame_bytes: int = 1_048_576
     sync_duration_tolerance_s: float = 0.5
+    #: Long audio is chunked inside the local provider: past this many
+    #: seconds the file is decoded once, sliced at exact sample offsets,
+    #: each slice is transcribed, and every slice is shifted back onto the
+    #: original timeline. 0 disables chunking (single pass, the library
+    #: default; the shipped compose stack sets 600).
+    chunk_seconds: float = 0.0
 
     s3_endpoint: str = "http://127.0.0.1:29000"
     s3_access_key: str = "stt"

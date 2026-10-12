@@ -13,7 +13,7 @@ import {
 import { useEffect } from "react";
 
 import { useApi } from "../api/context";
-import { useLivePreview } from "../hooks/useLivePreview";
+import { useLiveTranscript } from "../hooks/useLiveTranscript";
 import { useRecorder } from "../hooks/useRecorder";
 import { formatClock } from "../lib/format";
 
@@ -22,25 +22,42 @@ export default function Recorder({
   onDiscarded,
   language,
   disabled = false,
+  openSocket,
 }: {
   onRecorded: (file: File) => void;
   onDiscarded?: () => void;
-  /** Language hint for the live preview (the page owns the choice). */
+  /** Language hint for the live transcript (the page owns the choice). */
   language?: string;
   disabled?: boolean;
+  /** Test seam: how the streaming socket is built. */
+  openSocket?: (url: string) => WebSocket;
 }) {
   const api = useApi();
-  const { supported, status, seconds, level, clip, error, getBlob, start, stop, reset } =
-    useRecorder();
+  const {
+    supported,
+    status,
+    seconds,
+    level,
+    clip,
+    error,
+    getBlob,
+    readChunks,
+    start,
+    stop,
+    reset,
+  } = useRecorder();
 
-  // Live text while the microphone is open; it never touches the recording
-  // itself and never persists anything.
-  const live = useLivePreview({
+  // Live text while the microphone is open: a stream when the socket works,
+  // the older chunked preview when it cannot be opened. It never touches the
+  // recording itself and never persists anything.
+  const live = useLiveTranscript({
     client: api,
     active: status === "recording",
     seconds,
     getBlob,
+    readChunks,
     language,
+    openSocket,
   });
 
   useEffect(() => {
@@ -110,6 +127,7 @@ export default function Recorder({
         <div
           className="live-panel"
           data-testid="live-panel"
+          data-transport={live.transport ?? "none"}
           aria-label="Live transcript preview"
         >
           <div className="live-head">
@@ -117,7 +135,7 @@ export default function Recorder({
               className={live.status === "live" ? "live-dot is-live" : "live-dot"}
               aria-hidden="true"
             />
-            <span className="live-title">Live preview</span>
+            <span className="live-title">Live transcript</span>
             {live.provider && (
               <span className="badge badge-neutral">{live.provider}</span>
             )}
@@ -132,8 +150,20 @@ export default function Recorder({
               Preview stops after a couple of minutes — stop recording to
               transcribe the whole take.
             </p>
-          ) : live.text ? (
-            <p className="live-text">{live.text}</p>
+          ) : live.text || live.partial ? (
+            <p className="live-text">
+              {live.text}
+              {/*
+                The open utterance can still change, so it is set apart rather
+                than run together with the words the server has already closed.
+              */}
+              {live.partial && (
+                <span className="live-partial" data-testid="live-partial">
+                  {live.text ? " " : ""}
+                  {live.partial}
+                </span>
+              )}
+            </p>
           ) : (
             <p className="hint live-waiting">Listening…</p>
           )}

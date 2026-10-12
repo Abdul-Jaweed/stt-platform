@@ -2,7 +2,7 @@ import { File as NodeFile } from "node:buffer";
 import { http, HttpResponse } from "msw";
 
 import { server } from "../test/server";
-import { createApiClient } from "./client";
+import { createApiClient, streamUrlFor } from "./client";
 import { ApiError } from "./errors";
 import type { JobRecord } from "./types";
 
@@ -166,4 +166,17 @@ test("getEvaluation surfaces 404 as a typed not-found error", async () => {
     status: 404,
     code: "NOT_FOUND",
   });
+});
+
+test("the stream URL keeps the API's origin and switches the scheme to ws", () => {
+  expect(streamUrlFor("http://127.0.0.1:8200")).toBe(
+    "ws://127.0.0.1:8200/v1/transcriptions/stream",
+  );
+  expect(streamUrlFor("https://stt.example.com/")).toBe(
+    "wss://stt.example.com/v1/transcriptions/stream",
+  );
+  // Behind nginx the base is empty and the console is same-origin.
+  expect(streamUrlFor("")).toBe(
+    `${window.location.origin.replace(/^http/, "ws")}/v1/transcriptions/stream`,
+  );
 });

@@ -107,6 +107,72 @@ export interface LivePreview {
   is_final: false;
 }
 
+/**
+ * Frames of `WS /v1/transcriptions/stream` (see docs/streaming.md).
+ *
+ * `partial` is the utterance still open -- it can change. `final` is an
+ * utterance the VAD closed and the model decoded exactly once: its text will
+ * not change again, only be joined by more. `done` is the end of the session,
+ * and `done.text` is the authoritative concatenation.
+ */
+export interface StreamWindow {
+  start_s: number;
+  end_s: number;
+}
+
+export interface StreamReady {
+  type: "ready";
+  provider: string;
+  model: string;
+  session_id: string;
+  max_duration_s: number;
+  partial_interval_s: number;
+  sample_rate: number;
+  input_format: "container" | "pcm16";
+}
+
+export interface StreamPartial {
+  type: "partial";
+  text: string;
+  segments: TranscriptSegment[];
+  window: StreamWindow;
+  is_final: false;
+}
+
+export interface StreamFinal {
+  type: "final";
+  text: string;
+  segments: TranscriptSegment[];
+  window: StreamWindow;
+}
+
+export interface StreamErrorFrame {
+  type: "error";
+  code: string;
+  message: string;
+  fatal?: boolean;
+}
+
+export interface StreamCapped {
+  type: "capped";
+  max_duration_s: number;
+}
+
+export interface StreamDone {
+  type: "done";
+  reason: string;
+  duration_s: number;
+  text: string;
+}
+
+export type StreamFrame =
+  | StreamReady
+  | StreamPartial
+  | StreamFinal
+  | StreamErrorFrame
+  | StreamCapped
+  | StreamDone;
+
 export interface ProviderCapabilities {
   languages: string[];
   language_detection: boolean;

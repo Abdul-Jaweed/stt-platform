@@ -27,3 +27,22 @@ test("the resolver is Docker's embedded DNS with a short validity", () => {
   expect(match![1]).toBe("127.0.0.11");
   expect(Number(match![2])).toBeLessThanOrEqual(30);
 });
+
+// The streaming socket is a different animal from the REST proxy: nginx must
+// forward the Upgrade/Connection handshake instead of answering it, and a
+// session may be quiet between utterances, so its read timeout is the
+// stream's own cap rather than the 300s an upload gets.
+test("the streaming socket is proxied with the upgrade handshake", () => {
+  const match = conf.match(/location\s*=?\s*([^\s{]*transcriptions\/stream[^\s{]*)\s*\{([^}]*)\}/);
+  expect(match, "no location block for /v1/transcriptions/stream").not.toBeNull();
+  const [, path, body] = match!;
+  expect(path).toContain("/v1/transcriptions/stream");
+  expect(body).toMatch(/proxy_http_version\s+1\.1/);
+  expect(body).toMatch(/Upgrade\s+\$http_upgrade/);
+  expect(body).toMatch(/Connection\s+"?upgrade"?/i);
+  const timeout = body.match(/proxy_read_timeout\s+(\d+)s/);
+  expect(timeout, "no proxy_read_timeout in the stream block").not.toBeNull();
+  expect(Number(timeout![1])).toBeGreaterThanOrEqual(300);
+  // ...and it keeps the re-resolution rule that fixed the login 502.
+  expect(body).toMatch(/proxy_pass\s+\$api_stream/);
+});

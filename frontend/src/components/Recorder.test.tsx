@@ -5,7 +5,7 @@
  * page, so the recorded clip travels the exact same upload path as a chosen
  * file (and gets the same retention, playback and error handling).
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -18,15 +18,29 @@ import {
   removeRecorderSupport,
 } from "../test/mediaRecorder";
 import { server } from "../test/server";
+import { FakeWebSocket } from "../test/webSocket";
 import Recorder from "./Recorder";
 
 const BASE = "http://127.0.0.1:8200";
 
-function renderRecorder(props: Partial<Parameters<typeof Recorder>[0]> = {}) {
+/**
+ * By default the live socket cannot be opened (jsdom has no server behind it),
+ * so the panel falls back to the HTTP preview -- exactly the path the older
+ * tests here exercise. `{ streaming: true }` swaps in a socket the test drives.
+ */
+function renderRecorder(
+  props: Partial<Parameters<typeof Recorder>[0]> = {},
+  options: { streaming?: boolean } = {},
+) {
   const onRecorded = props.onRecorded ?? vi.fn();
+  const openSocket = options.streaming
+    ? (url: string) => new FakeWebSocket(url) as unknown as WebSocket
+    : () => {
+        throw new Error("WebSocket is not available in jsdom");
+      };
   const view = render(
     <ApiProvider client={createApiClient(BASE)}>
-      <Recorder onRecorded={onRecorded} {...props} />
+      <Recorder onRecorded={onRecorded} openSocket={openSocket} {...props} />
     </ApiProvider>,
   );
   return { ...view, onRecorded };
@@ -176,4 +190,55 @@ test("a broken preview never stops the recording", async () => {
   expect(
     screen.getByRole("button", { name: /stop recording/i }),
   ).toBeInTheDocument();
+});
+
+describe("Recorder streaming panel", () => {
+  const READY = {
+    type: "ready",
+    provider: "faster-whisper",
+    model: "large-v3-turbo",
+    session_id: "s1",
+    max_duration_s: 300,
+    partial_interval_s: 1,
+    sample_rate: 16000,
+    input_format: "container",
+  };
+
+  test("shows closed text and the still-open utterance separately", async () => {
+    FakeWebSocket.reset();
+    renderRecorder({}, { streaming: true });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /start recording/i }),
+    );
+    const socket = FakeWebSocket.latest;
+    act(() => socket.accept());
+    act(() => socket.deliver(READY));
+
+    act(() =>
+      socket.deliver({
+        type: "final",
+        text: "hello world",
+        segments: [],
+        window: { start_s: 0, end_s: 1 },
+      }),
+    );
+    expect(await screen.findByText(/hello world/)).toBeInTheDocument();
+
+    act(() =>
+      socket.deliver({
+        type: "partial",
+        text: "and then some",
+        segments: [],
+        window: { start_s: 1, end_s: 2 },
+        is_final: false,
+      }),
+    );
+    const partial = await screen.findByTestId("live-partial");
+    expect(partial).toHaveTextContent("and then some");
+    expect(screen.getByTestId("live-panel")).toHaveAttribute(
+      "data-transport",
+      "stream",
+    );
+  });
 });

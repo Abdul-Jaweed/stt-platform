@@ -245,6 +245,11 @@ export function useRecorder() {
     supported,
   ]);
 
+  const readChunks = useCallback(
+    (index: number): Blob[] => chunksRef.current.slice(Math.max(0, index)),
+    [],
+  );
+
   const getBlob = useCallback((): Blob | null => {
     if (chunksRef.current.length === 0) return null;
     const type =
@@ -282,6 +287,11 @@ export function useRecorder() {
     error,
     /** The audio captured so far (null before the first chunk arrives). */
     getBlob,
+    /**
+     * Chunks from `index` on, for a caller that streams them: boundaries are
+     * byte-exact, so what a consumer sends in order is the recording itself.
+     */
+    readChunks,
     start,
     stop,
     reset,

@@ -34,7 +34,21 @@ export interface PreviewInput {
   signal?: AbortSignal;
 }
 
+/**
+ * The streaming socket URL for an API base: same origin, same credentials.
+ * `http` maps to `ws` and `https` to `wss`; an empty base means same-origin,
+ * which is how the console is served behind nginx.
+ */
+export function streamUrlFor(baseUrl: string, path = "/v1/transcriptions/stream"): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  const origin =
+    trimmed || (typeof window !== "undefined" ? window.location.origin : "");
+  return `${origin.replace(/^http/, "ws")}${path}`;
+}
+
 export interface ApiClient {
+  /** Where the live stream lives; cookies travel with the handshake. */
+  streamUrl(): string;
   createTranscription(
     input: CreateTranscriptionInput,
   ): Promise<CreateTranscriptionResponse>;
@@ -113,6 +127,8 @@ export function createApiClient(baseUrl: string): ApiClient {
     `/v1/transcriptions/${encodeURIComponent(id)}`;
 
   return {
+    streamUrl: () => streamUrlFor(baseUrl),
+
     async createTranscription(input) {
       const form = new FormData();
       form.append("file", input.file);

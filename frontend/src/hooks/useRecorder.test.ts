@@ -237,3 +237,44 @@ describe("useRecorder", () => {
     expect(result.current.level).toBe(0);
   });
 });
+
+describe("readChunks", () => {
+  test("hands over chunks from an index, in order, without consuming them", async () => {
+    const { result } = renderHook(() => useRecorder());
+    await act(async () => {
+      await result.current.start();
+    });
+    const recorder = FakeMediaRecorder.instances.at(-1)!;
+
+    expect(result.current.readChunks(0)).toEqual([]);
+
+    act(() => {
+      recorder.emitChunk("one");
+      recorder.emitChunk("two");
+    });
+    expect(result.current.readChunks(0)).toHaveLength(2);
+
+    // A caller that tracks how far it got is never handed the same chunk twice.
+    act(() => recorder.emitChunk("three"));
+    const tail = result.current.readChunks(2);
+    expect(tail).toHaveLength(1);
+    expect(result.current.readChunks(3)).toHaveLength(0);
+  });
+
+  test("a new take starts from zero, so a stale index cannot leak old audio", async () => {
+    const { result } = renderHook(() => useRecorder());
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => FakeMediaRecorder.instances.at(-1)!.emitChunk("first take"));
+    act(() => result.current.reset());
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => FakeMediaRecorder.instances.at(-1)!.emitChunk("second take"));
+
+    const chunks = result.current.readChunks(0);
+    expect(chunks).toHaveLength(1);
+  });
+});

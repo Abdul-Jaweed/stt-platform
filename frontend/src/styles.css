@@ -2287,3 +2287,8 @@ tbody tr:hover {
 .quick-start-facts dd {
   margin: 0;
 }
+
+/* The utterance still open while streaming: the server may revise it. */
+.live-partial {
+  opacity: 0.65;
+}

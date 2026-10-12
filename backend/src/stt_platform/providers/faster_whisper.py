@@ -11,6 +11,8 @@ canonical ``models/faster-whisper`` directory via explicit
 import threading
 from collections.abc import Callable
 
+import numpy as np
+
 import stt_platform.core.cuda  # noqa: F401  (Windows DLL registration side effect)
 from stt_platform.core.config import Settings, get_settings
 from stt_platform.domain.errors import ProviderError
@@ -106,6 +108,52 @@ class FasterWhisperProvider:
                     language=request.language,
                     beam_size=5,
                     vad_filter=True,
+                    word_timestamps=True,
+                    condition_on_previous_text=False,
+                )
+                # Inference executes as the generator is consumed.
+                raw_segments = list(segments_iter)
+            except ValueError as exc:
+                raise ProviderError(
+                    "DECODE_FAILED", f"could not decode audio: {exc}", retryable=False
+                ) from exc
+            except Exception as exc:
+                raise ProviderError(
+                    "INFERENCE_FAILED", f"inference failed: {exc}", retryable=True
+                ) from exc
+        processing_duration_s = time.perf_counter() - started
+
+        return _to_provider_transcript(
+            raw_segments,
+            info,
+            model=self._settings.whisper_model,
+            processing_duration_s=processing_duration_s,
+        )
+
+    def transcribe_pcm(
+        self, samples: np.ndarray, language: str | None = None
+    ) -> ProviderTranscript:
+        """Transcribe one 16 kHz mono float window that is already in memory.
+
+        The streaming session decodes the stream and cuts the utterances
+        itself, so the samples go straight to the engine: no ffmpeg, and no
+        ``vad_filter`` -- a second VAD would re-cut a window the session's
+        segmenter deliberately kept whole, silently dropping speech. Everything
+        downstream (canonical mapping, error translation, the GPU semaphore)
+        is shared with ``transcribe``, because a streamed window and an
+        uploaded file are the same audio to the model.
+        """
+        engine = self._get_engine()
+        import time
+
+        started = time.perf_counter()
+        with self._semaphore:
+            try:
+                segments_iter, info = engine.transcribe(
+                    samples,
+                    language=language or None,
+                    beam_size=5,
+                    vad_filter=False,
                     word_timestamps=True,
                     condition_on_previous_text=False,
                 )

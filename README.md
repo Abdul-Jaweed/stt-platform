@@ -77,6 +77,12 @@ numbers they can defend.
 - **Synchronous and durable modes.** Audio within
   `STT_MAX_SYNC_DURATION_S` (default 180 s) is transcribed inside the request;
   longer audio becomes a durable job (`202`) executed by a Temporal workflow.
+- **Long audio is chunked locally.** Past `STT_CHUNK_SECONDS` the local
+  engine decodes the file once, slices it at exact 16 kHz sample offsets,
+  transcribes each slice and shifts every slice's transcript back onto the
+  original timeline (`domain.timeline.shift_segments`) — timestamps are
+  never re-derived. Managed providers are untouched and keep their own
+  declared limits.
 - **Local-first engine.** Faster-Whisper `large-v3-turbo` on CUDA is the
   default provider in GPU mode; CPU mode ships a smaller model. Model choice,
   device and compute type are configuration, not code.
@@ -446,6 +452,7 @@ Anything not listed here has a safe default; a handful of internal knobs
 | `STT_DEVICE` | `cuda` or `cpu` | No | `cuda` (compose CPU mode sets `cpu`) |
 | `STT_COMPUTE_TYPE` | ctranslate2 compute type | No | `float16` (CPU mode: `int8`) |
 | `STT_GPU_CONCURRENCY` | Parallel local transcriptions per worker | No | `1` |
+| `STT_CHUNK_SECONDS` | Local long-audio chunking slice length (`0` disables) | No | `0` (library default; the compose stack ships `600`) |
 | `STT_MANAGED_CONCURRENCY` | Parallel managed-provider calls | No | `4` |
 
 **Provider credentials** (each enables its provider; absent = not offered)
@@ -764,9 +771,19 @@ explained away. Deeper reading: [docs/evaluation.md](docs/evaluation.md).
   reported, never silently retried forever.
 
 Prometheus metrics are opt-in (`STT_PROMETHEUS_ENABLED`); the API and worker
-are separate processes, so give them distinct `STT_PROMETHEUS_PORT`s.
+are separate processes, so give them distinct `STT_PROMETHEUS_PORT`s. The
+Grafana dashboard (20 panels) and the Prometheus alert rules (18) ship with
+the package —
+[`observability/dashboards/stt-overview.json`](backend/src/stt_platform/observability/dashboards/stt-overview.json)
+and
+[`observability/alerts/stt-alerts.yaml`](backend/src/stt_platform/observability/alerts/stt-alerts.yaml).
+They are artifacts **for an operator-owned stack**: this repository deploys
+the STT platform only, never Grafana or Prometheus — and a guard test pins
+every metric they reference to the exporter's registry, so a renamed metric
+breaks the build instead of the dashboard.
 
-More: [docs/observability.md](docs/observability.md).
+More: [docs/observability.md](docs/observability.md) (scrape config and the
+import walkthrough).
 
 ## Project Structure
 

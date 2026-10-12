@@ -1,4 +1,4 @@
-# Evidance
+# STT Platform
 
 **Provider-neutral speech-to-text platform.** One `/v1` API turns audio into
 timestamped transcripts through swappable engines — a local Whisper model on
@@ -19,7 +19,7 @@ number it reports.
 
 Speech-to-text is easy to demo and hard to operate honestly. Providers differ
 in what they support, disagree about limits, and return timestamps you cannot
-judge without ground truth. Evidance is a self-hosted platform that treats
+judge without ground truth. STT Platform is a self-hosted platform that treats
 those differences as first-class facts:
 
 - **One API, swappable engines.** The same request works against a local
@@ -317,7 +317,7 @@ curl -s http://127.0.0.1:8200/v1/providers | head -c 400
 # lists at least faster-whisper on a GPU/CPU start
 
 curl -s http://127.0.0.1:8080/ | grep -o "<title>[^<]*</title>"
-# <title>Evidance ...
+# <title>STT Platform — provider-neutral transcription</title>
 
 curl -s -X POST http://127.0.0.1:8200/v1/transcriptions \
      -F "file=@audio/sample.wav" -F "provider=faster-whisper" | head -c 300
@@ -1040,7 +1040,7 @@ This section will be replaced with the real terms when the file lands.
 
 ## Acknowledgments
 
-Evidance builds on excellent open source: Faster-Whisper and ctranslate2
+STT Platform builds on excellent open source: Faster-Whisper and ctranslate2
 (the local engine), OpenAI's Whisper model weights, FastAPI, Pydantic,
 uvicorn, uv, Temporal (temporalio), PostgreSQL, RustFS, FFmpeg, React, Vite
 and Phosphor Icons, MkDocs Material for the documentation site,

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "75519c6e-c78a-4e4e-8c4e-2ff8fb2889bd",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "I:\\voice-agent-course\\local-stt\\.archify\\architecture-stt-platform-20261012-051305\\candidate-lifecycle.json",
+  "output": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\transcription-job-lifecycle.html",
+  "specification": {
+    "sha256": "8313e74139d4dab6326f1580f6fd33e7dd3af9a810801631448befa41dd4db01",
+    "bytes": 5941
+  },
+  "artifact": {
+    "sha256": "71a742ab24933e863b57cb9fa7bcd37b65109928b3f8c2966def4c8962c3d3ac",
+    "bytes": 771948
+  }
+}

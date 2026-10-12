@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "I:\\voice-agent-course\\local-stt\\.archify\\architecture-stt-platform-20261012-051305\\candidate-failure-recovery.json",
+    "sha256": "d306ce7d5925cb00c31c479e9cfe455739bf2ed2155b7996414ce9f036a1a582",
+    "bytes": 9264
+  },
+  "artifact": {
+    "path": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\failure-recovery-workflow.html"
+  },
+  "gates": {
+    "validate": "fail",
+    "deliver": "not-run",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "validate",
+  "diagnostics": [
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[0] id \"backoff-execute\" \"backoff\" -> \"execute\" crosses edges[10] id \"verdict-ok\" \"verdict\" -> \"succeeded\" at [293, 162] (segments 3 and 1) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 0,
+        "id": "backoff-execute",
+        "from": "backoff",
+        "to": "execute"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 10,
+          "id": "verdict-ok",
+          "from": "verdict",
+          "to": "succeeded"
+        },
+        "point": [
+          293,
+          162
+        ],
+        "segmentIndex": 3,
+        "otherSegmentIndex": 1
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/ambiguous-corridor",
+      "severity": "error",
+      "message": "[composition/ambiguous-corridor] showcase workflow edges[3] id \"poll-failed\" \"poll\" -> \"failed\" shares a 168px corridor with edges[5] id \"poll-timeout\" \"poll\" -> \"retry_wait\" at [568, 258] -> [568, 426] (segments 1 and 1; minimum 8px) — adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 3,
+        "id": "poll-failed",
+        "from": "poll",
+        "to": "failed"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 5,
+          "id": "poll-timeout",
+          "from": "poll",
+          "to": "retry_wait"
+        },
+        "overlapLengthPx": 168,
+        "minimumPx": 8,
+        "from": [
+          568,
+          258
+        ],
+        "to": [
+          568,
+          426
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 1
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so unrelated edges do not visually merge"
+      ]
+    },
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[2] id \"execute-verdict\" \"execute\" -> \"verdict\" crosses edges[11] id \"verdict-retry\" \"verdict\" -> \"retry_wait\" at [384, 120] (segments 0 and 2) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 2,
+        "id": "execute-verdict",
+        "from": "execute",
+        "to": "verdict"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 11,
+          "id": "verdict-retry",
+          "from": "verdict",
+          "to": "retry_wait"
+        },
+        "point": [
+          384,
+          120
+        ],
+        "segmentIndex": 0,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[3] id \"poll-failed\" \"poll\" -> \"failed\" crosses edges[10] id \"verdict-ok\" \"verdict\" -> \"succeeded\" at [568, 498] (segments 1 and 3) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 3,
+        "id": "poll-failed",
+        "from": "poll",
+        "to": "failed"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 10,
+          "id": "verdict-ok",
+          "from": "verdict",
+          "to": "succeeded"
+        },
+        "point": [
+          568,
+          498
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 3
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[10] id \"verdict-ok\" \"verdict\" -> \"succeeded\" crosses edges[11] id \"verdict-retry\" \"verdict\" -> \"retry_wait\" at [384, 162] (segments 1 and 2) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 10,
+        "id": "verdict-ok",
+        "from": "verdict",
+        "to": "succeeded"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 11,
+          "id": "verdict-retry",
+          "from": "verdict",
+          "to": "retry_wait"
+        },
+        "point": [
+          384,
+          162
+        ],
+        "segmentIndex": 1,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    },
+    {
+      "code": "composition/proper-crossing",
+      "severity": "error",
+      "message": "[composition/proper-crossing] showcase workflow edges[0] id \"backoff-execute\" \"backoff\" -> \"execute\" crosses edges[11] id \"verdict-retry\" \"verdict\" -> \"retry_wait\" at [384, 231] (segments 2 and 2) — adjust route/via, bias, or channel coordinates so the edges use separate lane corridors.",
+      "subject": {
+        "diagramType": "workflow",
+        "collection": "edges",
+        "index": 0,
+        "id": "backoff-execute",
+        "from": "backoff",
+        "to": "execute"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "workflow",
+          "collection": "edges",
+          "index": 11,
+          "id": "verdict-retry",
+          "from": "verdict",
+          "to": "retry_wait"
+        },
+        "point": [
+          384,
+          231
+        ],
+        "segmentIndex": 2,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via, bias, or channel coordinates so the edges use separate lane corridors"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 6,
+    "shown": 6,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\failure-recovery-workflow.finalize.json",
+    "summaryReceipt": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\failure-recovery-workflow.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-11T23:46:19.634Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 699,
+  "nextAction": {
+    "action": "edit-in-place",
+    "candidate": "I:\\voice-agent-course\\local-stt\\.archify\\architecture-stt-platform-20261012-051305\\candidate-failure-recovery.json",
+    "constraint": "Preserve unaffected semantics and geometry; do not replace the whole candidate.",
+    "then": "finalize-once"
+  }
+}

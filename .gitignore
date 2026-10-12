@@ -46,3 +46,6 @@ my_recording/
 
 # e2e working files (clips, logs) — evidence stays, scratch does not
 results/**/tmp/
+
+# archify working folder (candidates, receipts, capture PNGs)
+.archify/

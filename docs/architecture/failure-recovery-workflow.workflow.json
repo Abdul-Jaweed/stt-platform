@@ -1,0 +1,364 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Failure, Retry & Recovery Workflow",
+    "subtitle": "What happens when a provider, the network, or a worker fails mid-transcription",
+    "output": "docs/architecture/failure-recovery-workflow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:Abdul-Jaweed/stt-platform.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "2b44b8d79891e835f41ff49d64c5dfa8f197081c"
+    }
+  },
+  "lanes": [
+    {
+      "id": "loop",
+      "label": "Attempt loop"
+    },
+    {
+      "id": "remote",
+      "label": "Async provider wait"
+    },
+    {
+      "id": "recovery",
+      "label": "Retry & cancellation",
+      "variant": "exception"
+    },
+    {
+      "id": "terminal",
+      "label": "Outcomes"
+    }
+  ],
+  "mainPath": [
+    "start",
+    "execute",
+    "verdict",
+    "succeeded"
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "lane": "loop",
+      "col": 0,
+      "type": "backend",
+      "label": "Dispatched",
+      "sublabel": "outbox row claimed",
+      "tag": "job_id + scope",
+      "width": 132,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/persistence/outbox.py",
+          "line": 52,
+          "end_line": 69,
+          "label": "claim"
+        }
+      ]
+    },
+    {
+      "id": "execute",
+      "lane": "loop",
+      "col": 1,
+      "type": "backend",
+      "label": "execute_attempt",
+      "sublabel": "inspect · transcribe · normalize",
+      "tag": "one-shot activity",
+      "width": 170,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workers/activities.py",
+          "line": 167,
+          "end_line": 186,
+          "label": "execute_attempt"
+        }
+      ]
+    },
+    {
+      "id": "verdict",
+      "lane": "loop",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Attempt verdict",
+      "sublabel": "ok · pending · transient · permanent",
+      "width": 150,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 67,
+          "end_line": 103,
+          "label": "verdict handling"
+        }
+      ]
+    },
+    {
+      "id": "submit",
+      "lane": "remote",
+      "col": 2,
+      "type": "cloud",
+      "label": "Provider submission",
+      "sublabel": "durable in provider_attempts",
+      "tag": "crash-safe",
+      "width": 150,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 68,
+          "end_line": 75,
+          "label": "pending branch"
+        }
+      ]
+    },
+    {
+      "id": "poll",
+      "lane": "remote",
+      "col": 3,
+      "type": "cloud",
+      "label": "poll_remote",
+      "sublabel": "every poll_interval_s",
+      "tag": "errors keep polling",
+      "width": 140,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 166,
+          "end_line": 209,
+          "label": "poll loop + deadline"
+        }
+      ]
+    },
+    {
+      "id": "retry_wait",
+      "lane": "recovery",
+      "col": 1,
+      "type": "security",
+      "label": "RETRY_WAIT",
+      "sublabel": "attempt · code · message",
+      "tag": "the trail is the product",
+      "width": 150,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 105,
+          "end_line": 114,
+          "label": "transition"
+        }
+      ]
+    },
+    {
+      "id": "backoff",
+      "lane": "recovery",
+      "col": 2,
+      "type": "backend",
+      "label": "compute_backoff",
+      "sublabel": "2s · ×2 · cap 60s · +25% jitter",
+      "tag": "workflow.random()",
+      "width": 150,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workers/retry.py",
+          "line": 8,
+          "end_line": 22,
+          "label": "bounded backoff"
+        }
+      ]
+    },
+    {
+      "id": "cancel",
+      "lane": "recovery",
+      "col": 3,
+      "type": "security",
+      "label": "Cancellation",
+      "sublabel": "cancel_remote, best effort",
+      "tag": "never masks the cancel",
+      "width": 140,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 125,
+          "end_line": 149,
+          "label": "cancel cleanup"
+        }
+      ]
+    },
+    {
+      "id": "succeeded",
+      "lane": "terminal",
+      "col": 3,
+      "type": "backend",
+      "label": "SUCCEEDED",
+      "sublabel": "provider · model · language",
+      "width": 140,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 76,
+          "end_line": 88,
+          "label": "success"
+        }
+      ]
+    },
+    {
+      "id": "failed",
+      "lane": "terminal",
+      "col": 4,
+      "type": "security",
+      "label": "FAILED",
+      "sublabel": "code · message · retryable",
+      "tag": "permanent or exhausted",
+      "width": 140,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 90,
+          "end_line": 103,
+          "label": "failure"
+        }
+      ]
+    },
+    {
+      "id": "cancelled",
+      "lane": "terminal",
+      "col": 5,
+      "type": "security",
+      "label": "CANCELLED",
+      "sublabel": "terminal",
+      "width": 132,
+      "sources": [
+        {
+          "path": "backend/src/stt_platform/workflows/transcription.py",
+          "line": 143,
+          "end_line": 148,
+          "label": "recorded"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-execute",
+      "from": "start",
+      "to": "execute",
+      "role": "main"
+    },
+    {
+      "id": "execute-verdict",
+      "from": "execute",
+      "to": "verdict",
+      "role": "main"
+    },
+    {
+      "id": "verdict-ok",
+      "from": "verdict",
+      "to": "succeeded",
+      "label": "ok",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "verdict-submit",
+      "from": "verdict",
+      "to": "submit",
+      "label": "pending",
+      "role": "async",
+      "variant": "dashed"
+    },
+    {
+      "id": "submit-poll",
+      "from": "submit",
+      "to": "poll",
+      "role": "async",
+      "variant": "dashed"
+    },
+    {
+      "id": "poll-ok",
+      "from": "poll",
+      "to": "verdict",
+      "label": "ok",
+      "role": "return",
+      "variant": "emphasis"
+    },
+    {
+      "id": "poll-timeout",
+      "from": "poll",
+      "to": "retry_wait",
+      "label": "timeout · transient",
+      "role": "return",
+      "variant": "dashed"
+    },
+    {
+      "id": "poll-failed",
+      "from": "poll",
+      "to": "failed",
+      "label": "permanent",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "verdict-retry",
+      "from": "verdict",
+      "to": "retry_wait",
+      "label": "transient",
+      "role": "branch"
+    },
+    {
+      "id": "verdict-failed",
+      "from": "verdict",
+      "to": "failed",
+      "label": "permanent · exhausted",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "retry-backoff",
+      "from": "retry_wait",
+      "to": "backoff",
+      "role": "branch"
+    },
+    {
+      "id": "backoff-execute",
+      "from": "backoff",
+      "to": "execute",
+      "label": "next attempt",
+      "role": "return"
+    },
+    {
+      "id": "cancel-cancelled",
+      "from": "cancel",
+      "to": "cancelled",
+      "label": "cancel",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Bounded by design",
+      "items": [
+        "max_attempts defaults to 3; each attempt is a one-shot Temporal activity, because retries live in the workflow itself",
+        "Backoff is 2s × 2^(n-1) capped at 60s with 25% jitter, drawn from workflow.random() so replays stay deterministic",
+        "The per-attempt timeout and the poll budget (poll_interval_s, max_wait_s) are settings, not constants"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Recovery guarantees",
+      "items": [
+        "A provider submission is durable in provider_attempts, so a worker crash resumes polling instead of resubmitting",
+        "Transport-level poll errors keep polling — the remote job may still be healthy",
+        "A provider-side failure ends the attempt carrying the provider's own retryability verdict"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Honest failure",
+      "items": [
+        "Permanent errors fail the job immediately; retryable ones spend the attempt budget",
+        "A cancel arriving while the workflow sleeps or awaits an activity ends it as CANCELLED, not as a retry",
+        "A best-effort cancel_remote that fails is logged and never masks the cancellation itself"
+      ]
+    }
+  ]
+}

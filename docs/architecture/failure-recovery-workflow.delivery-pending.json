@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "command": "deliver",
+  "status": "pending",
+  "receiptId": "1de57159-81f6-4f3d-acc2-387e6d2b7bbc",
+  "input": "I:\\voice-agent-course\\local-stt\\.archify\\architecture-stt-platform-20261012-051305\\candidate-failure-recovery.json",
+  "output": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\failure-recovery-workflow.html"
+}

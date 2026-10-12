@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Provider-Neutral STT Platform — System Architecture",
+    "output": "docs/architecture/stt-platform-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:Abdul-Jaweed/stt-platform.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "2b44b8d79891e835f41ff49d64c5dfa8f197081c"
+    },
+    "views": [
+      {
+        "id": "primary",
+        "label": "Primary path",
+        "focus": ["console", "api", "auth", "audio", "jobs", "postgres", "worker", "faster_whisper", "normalize", "objects"],
+        "note": "Upload to retrieval: the request path plus the async execution it hands off to."
+      },
+      {
+        "id": "async",
+        "label": "Async execution",
+        "focus": ["jobs", "postgres", "worker", "temporal", "faster_whisper", "sarvam", "deepgram", "elevenlabs"],
+        "note": "API acceptance ends at the outbox row; Temporal and the worker own everything after it."
+      },
+      {
+        "id": "providers",
+        "label": "Providers",
+        "focus": ["registry", "worker", "faster_whisper", "sarvam", "deepgram", "elevenlabs", "transcribe_aws", "bedrock_automation"],
+        "note": "One internal contract, four adapters implemented, two AWS integrations still planned."
+      },
+      {
+        "id": "trust",
+        "label": "Trust boundaries",
+        "focus": ["console", "api", "auth", "faster_whisper", "sarvam", "deepgram", "elevenlabs", "objects", "retention"],
+        "note": "Tenant scope comes from the key, local-only audio never falls back, deletion removes objects first."
+      },
+      {
+        "id": "evaluation",
+        "label": "Evaluation",
+        "focus": ["evals", "dataset", "mlflow", "faster_whisper", "objects", "otel", "grafana"],
+        "note": "MLflow measures quality; OpenTelemetry measures operations."
+      }
+    ]
+  },
+  "components": [
+    { "id": "api_clients", "type": "external", "label": "API clients", "sublabel": "programmatic", "pos": [30, 250], "size": [140, 58],
+      "sources": [{ "path": "docs/api.md", "line": 70, "end_line": 112, "label": "documented /v1 calls" }] },
+    { "id": "console", "type": "frontend", "label": "Frontend console", "sublabel": "React + TS + Vite", "tag": "session cookie · SRT/VTT", "pos": [30, 430], "size": [140, 76],
+      "sources": [{ "path": "frontend/src/api/client.ts", "line": 70, "end_line": 179, "label": "only backend API" }, { "path": "frontend/src/lib/subtitles.ts", "line": 36, "end_line": 44, "label": "in-browser SRT/VTT" }] },
+    { "id": "voice_agents", "type": "external", "label": "Voice agents", "sublabel": "live + batch", "pos": [30, 590], "size": [140, 58],
+      "sources": [{ "path": "docs/api.md", "line": 25, "end_line": 30, "label": "preview endpoint" }] },
+
+    { "id": "ffmpeg", "type": "external", "label": "ffmpeg / ffprobe", "sublabel": "media probing", "pos": [370, 110], "size": [140, 52],
+      "sources": [{ "path": "backend/src/stt_platform/audio/inspect.py", "line": 35, "end_line": 67, "label": "ffprobe + duration" }] },
+    { "id": "audio", "type": "backend", "label": "Audio validation", "sublabel": "content check · limits", "pos": [600, 110], "size": [160, 66],
+      "sources": [{ "path": "backend/src/stt_platform/audio/validation.py", "line": 9, "end_line": 38, "label": "validate_upload" }, { "path": "backend/src/stt_platform/audio/inspect.py", "line": 110, "end_line": 140, "label": "inspect_audio" }] },
+    { "id": "api", "type": "backend", "label": "FastAPI control plane", "sublabel": "versioned /v1 · OpenAPI", "tag": "headless", "pos": [230, 430], "size": [160, 96],
+      "sources": [{ "path": "backend/src/stt_platform/main.py", "line": 31, "end_line": 85, "label": "create_app + routers" }, { "path": "backend/src/stt_platform/api/v1/transcriptions.py", "line": 126, "end_line": 282, "label": "job routes" }] },
+    { "id": "auth", "type": "security", "label": "Auth & tenant scope", "sublabel": "API key → tenant", "tag": "HttpOnly cookie", "pos": [230, 620], "size": [160, 66],
+      "sources": [{ "path": "backend/src/stt_platform/api/security.py", "line": 42, "end_line": 99, "label": "scope from the key" }, { "path": "backend/src/stt_platform/api/v1/auth.py", "line": 67, "end_line": 114, "label": "browser session" }] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "jobs · transitions · attempts", "tag": "operational source of truth", "pos": [230, 800], "size": [160, 70],
+      "sources": [{ "path": "backend/src/stt_platform/persistence/models.py", "line": 25, "end_line": 145, "label": "tables" }, { "path": "backend/src/stt_platform/persistence/outbox.py", "line": 52, "end_line": 69, "label": "SKIP LOCKED claim" }] },
+
+    { "id": "registry", "type": "backend", "label": "Provider registry", "sublabel": "capability discovery", "pos": [740, 310], "size": [160, 66],
+      "sources": [{ "path": "backend/src/stt_platform/providers/registry.py", "line": 7, "end_line": 35, "label": "registry" }, { "path": "backend/src/stt_platform/providers/base.py", "line": 64, "end_line": 90, "label": "provider contract" }] },
+    { "id": "jobs", "type": "backend", "label": "Job service", "sublabel": "idempotent create", "tag": "sync | async decision", "pos": [490, 430], "size": [160, 96],
+      "sources": [{ "path": "backend/src/stt_platform/services/jobs.py", "line": 68, "end_line": 146, "label": "fingerprint + replay" }, { "path": "backend/src/stt_platform/services/jobs.py", "line": 171, "end_line": 221, "label": "async + outbox" }] },
+    { "id": "retention", "type": "security", "label": "Retention & deletion", "sublabel": "objects first, then rows", "pos": [740, 620], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/services/retention.py", "line": 49, "end_line": 88, "label": "purge + delete" }] },
+    { "id": "normalize", "type": "backend", "label": "Transcript normalization", "sublabel": "canonical schema", "tag": "original-timeline offsets", "pos": [400, 720], "size": [160, 80],
+      "sources": [{ "path": "backend/src/stt_platform/schemas/transcript.py", "line": 53, "end_line": 69, "label": "canonical result" }, { "path": "backend/src/stt_platform/domain/timeline.py", "line": 7, "end_line": 30, "label": "offset shift" }, { "path": "backend/src/stt_platform/workers/activities.py", "line": 379, "end_line": 417, "label": "finalize" }] },
+    { "id": "objects", "type": "cloud", "label": "RustFS / S3", "sublabel": "audio · transcripts", "tag": "opaque tenant-scoped keys", "pos": [620, 800], "size": [160, 70],
+      "sources": [{ "path": "backend/src/stt_platform/storage/s3.py", "line": 18, "end_line": 71, "label": "object store" }, { "path": "backend/src/stt_platform/storage/keys.py", "line": 27, "end_line": 42, "label": "opaque keys" }] },
+
+    { "id": "temporal", "type": "messagebus", "label": "Temporal", "sublabel": "durable workflows", "tag": ":7233", "pos": [740, 220], "size": [160, 66],
+      "sources": [{ "path": "backend/src/stt_platform/services/temporal_starter.py", "line": 41, "end_line": 106, "label": "starter" }, { "path": "backend/src/stt_platform/workflows/transcription.py", "line": 26, "end_line": 29, "label": "TranscriptionWorkflow" }] },
+    { "id": "worker", "type": "backend", "label": "Transcription worker", "sublabel": "activities · outbox dispatcher", "pos": [740, 430], "size": [170, 130],
+      "sources": [{ "path": "backend/src/stt_platform/workers/transcription_worker.py", "line": 105, "end_line": 162, "label": "worker + dispatcher" }, { "path": "backend/src/stt_platform/workers/activities.py", "line": 167, "end_line": 186, "label": "execute_attempt" }] },
+
+    { "id": "sarvam", "type": "cloud", "label": "Sarvam AI", "sublabel": "saaras:v4 batch", "tag": "managed", "pos": [980, 110], "size": [150, 56],
+      "sources": [{ "path": "backend/src/stt_platform/providers/managed/sarvam.py", "line": 68, "end_line": 183, "label": "submit + poll" }] },
+    { "id": "deepgram", "type": "cloud", "label": "Deepgram", "sublabel": "nova-3 · /v1/listen", "tag": "managed", "pos": [980, 200], "size": [150, 56],
+      "sources": [{ "path": "backend/src/stt_platform/providers/managed/deepgram.py", "line": 51, "end_line": 112, "label": "adapter" }] },
+    { "id": "elevenlabs", "type": "cloud", "label": "ElevenLabs Scribe", "sublabel": "scribe_v2", "tag": "managed", "pos": [980, 290], "size": [150, 56],
+      "sources": [{ "path": "backend/src/stt_platform/providers/managed/elevenlabs.py", "line": 46, "end_line": 104, "label": "adapter" }] },
+    { "id": "faster_whisper", "type": "backend", "label": "Faster-Whisper", "sublabel": "local inference", "tag": "CUDA · large-v3-turbo", "pos": [980, 460], "size": [160, 90],
+      "sources": [{ "path": "backend/src/stt_platform/providers/faster_whisper.py", "line": 37, "end_line": 97, "label": "local adapter" }, { "path": "backend/src/stt_platform/core/cuda.py", "line": 15, "end_line": 28, "label": "CUDA DLL registration" }] },
+
+    { "id": "evals", "type": "backend", "label": "Evaluation runner", "sublabel": "WER/CER · RTF", "tag": "synchronous API run", "pos": [280, 1050], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/evaluation/metrics.py", "line": 165, "end_line": 216, "label": "WER/CER" }, { "path": "backend/src/stt_platform/api/v1/evaluations.py", "line": 58, "end_line": 105, "label": "run endpoint" }] },
+    { "id": "dataset", "type": "database", "label": "Versioned eval dataset", "sublabel": "human-verified refs", "tag": "never scored when pending", "pos": [500, 1050], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/evaluation/datasets.py", "line": 95, "end_line": 99, "label": "dataset path" }, { "path": "scripts/make_eval_corpus.py", "line": 57, "end_line": 79, "label": "synthesized corpus" }] },
+    { "id": "otel", "type": "backend", "label": "OpenTelemetry", "sublabel": "API + workflow + worker spans", "tag": "off by default", "pos": [720, 1050], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/observability/tracing.py", "line": 88, "end_line": 120, "label": "tracing" }, { "path": "backend/src/stt_platform/observability/metrics.py", "line": 183, "end_line": 201, "label": "metrics" }] },
+    { "id": "mlflow", "type": "external", "label": "MLflow", "sublabel": "experiment tracking", "tag": "best-effort", "pos": [500, 1140], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/evaluation/mlflow_logging.py", "line": 122, "end_line": 160, "label": "log_evaluation" }] },
+    { "id": "grafana", "type": "external", "label": "Grafana / Prometheus", "sublabel": "operator stack", "tag": "20 panels · 18 alerts", "pos": [720, 1140], "size": [160, 60],
+      "sources": [{ "path": "backend/src/stt_platform/observability/dashboards/stt-overview.json", "line": 1, "end_line": 40, "label": "dashboard" }, { "path": "backend/src/stt_platform/observability/alerts/stt-alerts.yaml", "line": 1, "end_line": 30, "label": "alert rules" }] },
+
+    { "id": "transcribe_aws", "type": "cloud", "label": "Amazon Transcribe", "sublabel": "spec §Phase 4", "tag": "planned — not implemented", "pos": [280, 1260], "size": [160, 56] },
+    { "id": "bedrock_automation", "type": "cloud", "label": "Bedrock Data Automation", "sublabel": "optional evaluation", "tag": "planned — not implemented", "pos": [500, 1260], "size": [160, 56] },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "cache · coordination", "tag": "planned — not implemented", "pos": [720, 1260], "size": [160, 56] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Client layer", "wraps": ["api_clients", "console", "voice_agents"] },
+    { "kind": "security-group", "label": "tenant isolation — scope comes from the key", "wraps": ["api", "auth"], "pad": 14 },
+    { "kind": "security-group", "label": "local-only — never falls back to cloud", "wraps": ["faster_whisper"], "pad": 14 },
+    { "kind": "region", "label": "External managed providers — paid APIs", "wraps": ["sarvam", "deepgram", "elevenlabs"] },
+    { "kind": "region", "label": "Planned — specified, not implemented", "wraps": ["transcribe_aws", "bedrock_automation", "redis"] },
+    { "kind": "region", "label": "Durable processing", "wraps": ["temporal", "worker"] },
+    { "kind": "region", "label": "Observability & evaluation", "wraps": ["evals", "dataset", "otel", "mlflow", "grafana"] }
+  ],
+  "connections": [
+    { "id": "console-api", "from": "console", "to": "api", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "clients-api", "from": "api_clients", "to": "api", "label": "X-API-Key", "variant": "emphasis" },
+    { "id": "agents-api", "from": "voice_agents", "to": "api", "label": "X-API-Key", "variant": "emphasis" },
+    { "id": "api-auth", "from": "api", "to": "auth", "label": "authorize", "variant": "security" },
+    { "id": "api-audio", "from": "api", "to": "audio", "label": "multipart", "variant": "emphasis" },
+    { "id": "audio-ffmpeg", "from": "audio", "to": "ffmpeg", "label": "ffprobe" },
+    { "id": "api-jobs", "from": "api", "to": "jobs", "label": "idempotent", "variant": "emphasis" },
+    { "id": "jobs-postgres", "from": "jobs", "to": "postgres", "label": "job + outbox", "variant": "emphasis" },
+    { "id": "worker-postgres", "from": "worker", "to": "postgres", "label": "claim (SKIP LOCKED)", "variant": "dashed" },
+    { "id": "worker-temporal", "from": "worker", "to": "temporal", "label": "activities", "variant": "emphasis" },
+    { "id": "worker-local", "from": "worker", "to": "faster_whisper", "label": "CUDA", "variant": "emphasis" },
+    { "id": "worker-sarvam", "from": "worker", "to": "sarvam", "label": "batch", "variant": "security" },
+    { "id": "worker-deepgram", "from": "worker", "to": "deepgram", "label": "listen", "variant": "security" },
+    { "id": "worker-elevenlabs", "from": "worker", "to": "elevenlabs", "label": "scribe", "variant": "security" },
+    { "id": "worker-objects", "from": "worker", "to": "objects", "label": "artifacts", "variant": "emphasis" },
+    { "id": "worker-normalize", "from": "worker", "to": "normalize", "label": "canonicalize" },
+    { "id": "normalize-objects", "from": "normalize", "to": "objects", "label": "transcript JSON" },
+    { "id": "normalize-postgres", "from": "normalize", "to": "postgres", "label": "result metadata", "fromSide": "bottom", "toSide": "bottom", "via": [[480, 920], [310, 920]] },
+    { "id": "api-objects", "from": "api", "to": "objects", "label": "original · GET", "variant": "emphasis" },
+    { "id": "api-retention", "from": "api", "to": "retention", "label": "DELETE job", "variant": "security" },
+    { "id": "evals-dataset", "from": "evals", "to": "dataset", "label": "refs" },
+    { "id": "api-evals", "from": "api", "to": "evals", "label": "run eval", "fromSide": "left", "toSide": "left", "via": [[220, 478], [220, 1080]] },
+    { "id": "evals-mlflow", "from": "evals", "to": "mlflow", "label": "log run", "variant": "dashed", "fromSide": "bottom", "toSide": "left", "via": [[360, 1170]] },
+    { "id": "worker-otel", "from": "worker", "to": "otel", "label": "OTLP", "variant": "dashed", "fromSide": "right", "toSide": "right", "via": [[930, 495], [930, 1080]] }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Trust boundaries", "items": [
+      "Tenant scope is derived from the presented API key; a client-supplied tenant is never trusted",
+      "The browser holds an HttpOnly, SameSite=Lax session cookie — the server assigns its tenant, and no token reaches localStorage",
+      "Requests restricted to local processing never fall back to a managed provider (live preview returns 422 LIVE_PREVIEW_LOCAL_ONLY)",
+      "Large files upload straight to object storage with a one-shot presigned PUT; small ones go through the API as multipart",
+      "Object keys are opaque and tenant-scoped; buckets are never public; deletion removes objects before rows"
+    ] },
+    { "dot": "emerald", "title": "Reliability contract", "items": [
+      "Idempotent creation: Idempotency-Key plus a request fingerprint; a replay returns the original job, a conflicting reuse is refused",
+      "A transactional outbox row is written with the job; the dispatcher claims rows FOR UPDATE SKIP LOCKED",
+      "Retries live inside the workflow, so every attempt records a RETRY_WAIT transition (bounded backoff with jitter)",
+      "Durable at-least-once with idempotent effects — no exactly-once promise across external providers",
+      "Cancellation is checked at every activity await; a cancel during backoff ends the workflow instead of retrying"
+    ] },
+    { "dot": "amber", "title": "Planned, not implemented", "items": [
+      "Redis cache/coordination — today the per-tenant limiter is an in-process sliding window",
+      "Amazon Transcribe and Amazon Bedrock Data Automation (spec Phase 4 and an optional evaluation)",
+      "Local chunking of long audio — the offset-shift helper exists, but long audio relies on provider limits",
+      "Grafana/Prometheus are shipped as dashboard and alert artifacts for an operator-owned stack, not deployed here"
+    ] },
+    { "dot": "slate", "title": "Evidence", "items": [
+      "Every component cites repository paths at revision 2b44b8d (git@github.com:Abdul-Jaweed/stt-platform.git)",
+      "Implemented vs planned is stated per node: a 'planned — not implemented' tag means the repository does not contain it",
+      "Diagram validation proves the drawing is well-formed, not that the platform runs",
+      "Live scope verified elsewhere: 469 backend tests + 3 GPU, 156 frontend tests, one live call per managed provider"
+    ] }
+  ]
+}

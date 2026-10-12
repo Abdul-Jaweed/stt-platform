@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Transcription Job Lifecycle",
+    "subtitle": "Every legal job transition, from acceptance to a terminal outcome",
+    "output": "docs/architecture/transcription-job-lifecycle.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:Abdul-Jaweed/stt-platform.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "2b44b8d79891e835f41ff49d64c5dfa8f197081c"
+    }
+  },
+  "lanes": [
+    { "id": "main", "label": "Request & execution" },
+    { "id": "retry", "label": "Retry & recovery" },
+    { "id": "terminal", "label": "Terminal outcomes" }
+  ],
+  "states": [
+    { "id": "accepted", "type": "start", "label": "ACCEPTED", "sublabel": "request received", "lane": "main", "col": 0, "step": "01", "tag": "recorded",
+      "sources": [{ "path": "backend/src/stt_platform/domain/status.py", "line": 10, "end_line": 19, "label": "JobStatus enum" }] },
+    { "id": "validating", "type": "active", "label": "VALIDATING", "sublabel": "content + limits", "lane": "main", "col": 1, "step": "02", "tag": "ffprobe",
+      "sources": [{ "path": "backend/src/stt_platform/audio/validation.py", "line": 9, "end_line": 38, "label": "validate_upload" }] },
+    { "id": "stored", "type": "active", "label": "STORED", "sublabel": "object written", "lane": "main", "col": 2, "step": "03", "tag": "opaque key",
+      "sources": [{ "path": "backend/src/stt_platform/domain/status.py", "line": 22, "end_line": 25, "label": "allowed transitions" }] },
+    { "id": "queued", "type": "waiting", "label": "QUEUED", "sublabel": "outbox row pending", "lane": "main", "col": 3, "step": "04", "tag": "not yet running",
+      "sources": [{ "path": "backend/src/stt_platform/persistence/outbox.py", "line": 52, "end_line": 69, "label": "SKIP LOCKED claim" }] },
+    { "id": "processing", "type": "active", "label": "PROCESSING", "sublabel": "attempt in flight", "lane": "main", "col": 4, "step": "05", "tag": "workflow attempt",
+      "sources": [{ "path": "backend/src/stt_platform/workers/activities.py", "line": 167, "end_line": 186, "label": "execute_attempt" }] },
+    { "id": "retry_wait", "type": "waiting", "label": "RETRY_WAIT", "sublabel": "backoff sleeping", "lane": "retry", "col": 3, "step": "06", "tag": "attempt visible",
+      "sources": [{ "path": "backend/src/stt_platform/workflows/transcription.py", "line": 105, "end_line": 114, "label": "RETRY_WAIT transition" }] },
+    { "id": "failed", "type": "failure", "label": "FAILED", "sublabel": "code · message · retryable", "lane": "terminal", "col": 3, "step": "07", "tag": "requeueable",
+      "sources": [{ "path": "backend/src/stt_platform/workflows/transcription.py", "line": 90, "end_line": 103, "label": "failure record" }] },
+    { "id": "cancelled", "type": "failure", "label": "CANCELLED", "sublabel": "terminal", "lane": "terminal", "col": 2, "step": "08", "tag": "terminal",
+      "sources": [{ "path": "backend/src/stt_platform/workflows/transcription.py", "line": 125, "end_line": 149, "label": "cancel cleanup" }] },
+    { "id": "succeeded", "type": "success", "label": "SUCCEEDED", "sublabel": "result persisted", "lane": "terminal", "col": 4, "step": "09", "tag": "terminal",
+      "sources": [{ "path": "backend/src/stt_platform/workflows/transcription.py", "line": 76, "end_line": 88, "label": "success record" }] }
+  ],
+  "transitions": [
+    { "from": "accepted", "to": "validating" },
+    { "from": "validating", "to": "stored", "label": "checks pass" },
+    { "from": "validating", "to": "failed", "label": "content rejected", "variant": "security" },
+    { "from": "stored", "to": "queued", "label": "outbox row written" },
+    { "from": "stored", "to": "failed", "label": "storage unavailable", "variant": "security" },
+    { "from": "queued", "to": "processing", "label": "row claimed" },
+    { "from": "queued", "to": "cancelled", "label": "direct cancel", "variant": "security" },
+    { "from": "processing", "to": "succeeded", "label": "result stored", "variant": "emphasis" },
+    { "from": "processing", "to": "retry_wait", "label": "retryable error" },
+    { "from": "processing", "to": "failed", "label": "permanent · exhausted", "variant": "security" },
+    { "from": "processing", "to": "cancelled", "label": "cancel via Temporal", "variant": "security" },
+    { "from": "retry_wait", "to": "queued", "label": "backoff elapsed", "variant": "dashed" },
+    { "from": "retry_wait", "to": "failed", "variant": "security" },
+    { "from": "retry_wait", "to": "cancelled", "variant": "security" },
+    { "from": "failed", "to": "queued", "label": "manual retry", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "One source of truth", "items": [
+      "ALLOWED_TRANSITIONS in domain/status.py decides what is legal; PostgreSQL stores every transition that happens",
+      "An illegal transition raises INVALID_TRANSITION instead of writing a row",
+      "PARTIALLY_SUCCEEDED is deliberately absent until its semantics are defined (spec §9)"
+    ] },
+    { "dot": "amber", "title": "Every attempt is visible", "items": [
+      "Retries run inside the workflow rather than Temporal's activity RetryPolicy, so each failure writes a RETRY_WAIT row",
+      "Backoff is bounded: 2s × 2^(n-1), capped at 60s, plus 25% jitter drawn from workflow.random() so replays are deterministic",
+      "The attempt budget (max_attempts, default 3) and the per-attempt timeout are settings, not constants"
+    ] },
+    { "dot": "rose", "title": "Terminal and recovery exits", "items": [
+      "SUCCEEDED and CANCELLED have no outgoing transitions",
+      "FAILED can be requeued manually, which is why it is not a dead end",
+      "A cancel delivered while sleeping or while an activity is pending ends as CANCELLED, never as a retry"
+    ] }
+  ]
+}

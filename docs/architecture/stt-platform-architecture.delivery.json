@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "047cb7f1-c88b-4999-9fc1-f70a090f7941",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "I:\\voice-agent-course\\local-stt\\.archify\\architecture-stt-platform-20261012-051305\\candidate.json",
+  "output": "I:\\voice-agent-course\\local-stt\\docs\\architecture\\stt-platform-architecture.html",
+  "specification": {
+    "sha256": "3caceaac1f022d2da084d3f012f948a4c5eafc6e0c5681b042ba7b7d38e3169a",
+    "bytes": 17914
+  },
+  "artifact": {
+    "sha256": "bc1fdce3fe6eddbbff569fb65029926d181048b6fddcf10522046d17246d52a1",
+    "bytes": 817286
+  }
+}

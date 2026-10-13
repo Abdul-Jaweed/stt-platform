@@ -1056,7 +1056,7 @@ will focus on.
 **Completed** — eight build phases (durable processing, managed providers,
 observability, evaluation, hardening, streaming) plus a product revamp; each
 has a report in [`docs/`](docs/) and the revamp ledger is
-[docs/evidance-revamp-report.md](docs/evidance-revamp-report.md).
+[docs/revamp-report.md](docs/revamp-report.md).
 
 **In progress / partial**
 

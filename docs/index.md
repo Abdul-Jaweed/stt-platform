@@ -1,6 +1,6 @@
-# Evidance
+# STT Platform
 
-Evidance is a **provider-neutral speech-to-text platform**. One headless
+STT Platform is a **provider-neutral speech-to-text platform**. One headless
 `/v1` API turns audio into timestamped transcripts through swappable
 providers — a local Faster-Whisper `large-v3-turbo` on CUDA, or a managed API
 (Deepgram, ElevenLabs Scribe, Sarvam) — behind a single internal contract. A

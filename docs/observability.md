@@ -1,7 +1,7 @@
 # Observability
 
 Phase 5 wired OpenTelemetry through the API, the workflow, the worker and
-every provider call. Phase 9 (the Evidance revamp) flipped the default: it
+every provider call. Phase 9 (the master revamp) flipped the default: it
 is **on** in the standard dev and Docker configurations, because
 instrumentation that has to be discovered before it can help is
 instrumentation nobody reads.

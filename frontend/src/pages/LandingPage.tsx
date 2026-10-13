@@ -35,7 +35,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { formatBytes, formatDuration } from "../lib/format";
 
 /**
- * The public landing page for Evidance.
+ * The public landing page for STT Platform.
  *
  * Everything vendor-shaped on this page comes from `GET /v1/providers` on
  * load: the providers listed, their limits and their capabilities. If the API
@@ -249,7 +249,7 @@ export default function LandingPage() {
             <BrandMark />
           </span>
           <span className="brand-text">
-            <span className="brand-name">Evidance</span>
+            <span className="brand-name">STT Platform</span>
             <span className="brand-tag">Provider-neutral speech-to-text platform</span>
           </span>
         </Link>
@@ -522,7 +522,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <p>
-            Evidance — a speech-to-text service with evaluation built in, over a
+            STT Platform — a speech-to-text service with evaluation built in, over a
             local model and managed providers. The console consumes only the
             public <code>/v1</code> API.
           </p>

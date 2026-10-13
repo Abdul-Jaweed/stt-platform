@@ -1,6 +1,6 @@
-# Evidance revamp — verification and report
+# STT Platform revamp — verification and report
 
-Directive: the master revamp brief (product name **Evidance**), executed as
+Directive: the master revamp brief, executed as
 slices S1–S12 against the existing platform. Every claim below names the
 command, run or file that produced it. Things that are not done are in
 "Not done, and why" — not left implied.
@@ -15,10 +15,10 @@ command, run or file that produced it. Things that are not done are in
 | **S4** demo login, safely | ✅ pushed `62983df` | `STT_AUTH_DEMO_MODE` (default true) AND not production; the live production console renders no panel (DOM-verified); backend 551, frontend 180 |
 | **S5** evaluation explainability | ✅ pushed `a9b2e81` | `GET /v1/evaluations/metrics` (9 specs bound to the callables that compute them) + `GET /v1/evaluations/{id}/artifact`; the live run's artifact fetched and reconciled (16/16 tokens); compiled WER == compiled counts == Python (fuzz, 60 cases); backend 563 |
 | **S6** evaluations UX | ✅ pushed `92f8f0e` | strict alignment walker (4 loud failure modes); the diff and the card counts come from the same parts; null = "not measured", never 0; artifact-unavailable path is a typed note; frontend 214; deployed bundle verified to contain the new code |
-| **S7** landing page | ✅ verified green (`cb40d0c`) | brand + tagline, CTAs, capabilities strictly from the live `/v1/providers` (live DOM: Evidance / Provider-neutral / Open the console / Limits all present), honest unavailable state, limits section; 10 new tests |
+| **S7** landing page | ✅ verified green (`cb40d0c`) | brand + tagline, CTAs, capabilities strictly from the live `/v1/providers` (live DOM: STT Platform / Provider-neutral / Open the console / Limits all present), honest unavailable state, limits section; 10 new tests |
 | **S8** real-time across providers | 🟡 partial, pushed `cb40d0c` | the managed-stream contract + Deepgram adapter implemented and green (10 unit tests against a local WebSocket speaking the vendor protocol; route driven end-to-end against a fake vendor). **The capability flag stays `false`** — no live Deepgram run yet, and Sarvam/ElevenLabs realtime are proposals |
-| **S9** docs overhaul | ✅ pushed `d126e35` | README says Evidance with current numbers and the corrected OTel default; `docs/pipeline-and-reliability.md` (pipeline, failure-mode table, capacity as the four real knobs, retention order, reviewer commands) — live at <https://abdul-jaweed.github.io/stt-platform/pipeline-and-reliability.html> |
-| **S10** docs site + Pages | ✅ pushed + deployed | `mkdocs.yml`, `docs/index.md`, `.github/workflows/docs.yml`; `uvx --with mkdocs-material mkdocs build --strict` exits 0 with zero warnings; Pages enabled (`build_type=workflow`); the workflow runs green on every docs push (29/34/36 s); live site serves Evidance with the architecture diagrams intact |
+| **S9** docs overhaul | ✅ pushed `d126e35` | README says STT Platform with current numbers and the corrected OTel default; `docs/pipeline-and-reliability.md` (pipeline, failure-mode table, capacity as the four real knobs, retention order, reviewer commands) — live at <https://abdul-jaweed.github.io/stt-platform/pipeline-and-reliability.html> |
+| **S10** docs site + Pages | ✅ pushed + deployed | `mkdocs.yml`, `docs/index.md`, `.github/workflows/docs.yml`; `uvx --with mkdocs-material mkdocs build --strict` exits 0 with zero warnings; Pages enabled (`build_type=workflow`); the workflow runs green on every docs push (29/34/36 s); live site serves STT Platform with the architecture diagrams intact |
 | **S11** Docker audit | 🟡 partial | restart policies on all long-running services; 6 healthchecks; containers run as uid 1000 (`app`) — verified with `docker exec stt-api id`; `.env.example` completeness is enforced by `test_compose_env.py`; `launch.sh clean` is guarded by a typed confirmation and removes containers, volumes and images. **A from-scratch `clean` → `start` cycle was not run** (it would destroy the live database and images mid-verification); the script's commands were read and are correct |
 | **S12** this report | ✅ | — |
 
@@ -31,9 +31,9 @@ frontend  npx vitest run                                            → 31 files
 frontend  npm run build                                             → built (475 kB / 136 kB gzip)
 docs      uvx --with mkdocs-material mkdocs build --strict          → exit 0, zero warnings
 ci        Docs workflow on every push since S8                      → success (29 s, 34 s, 36 s)
-live      https://abdul-jaweed.github.io/stt-platform/              → 200, title "Evidance"
+live      https://abdul-jaweed.github.io/stt-platform/              → 200, title "STT Platform"
 live      deployed console bundle index-FjijUHrv.js                → contains the new detail-page code
-live      console landing page (DOM)                                → Evidance / Provider-neutral / Open the console / Limits
+live      console landing page (DOM)                                → STT Platform / Provider-neutral / Open the console / Limits
 ```
 
 ## Not done, and why

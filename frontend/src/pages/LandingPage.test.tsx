@@ -8,7 +8,7 @@ import { server } from "../test/server";
 import LandingPage from "./LandingPage";
 
 /**
- * The landing page is the public face of Evidance: the brand, the calls to
+ * The landing page is the public face of STT Platform: the brand, the calls to
  * action, the live provider directory served by `GET /v1/providers`, the real
  * pipeline, and the limits stated out loud. The directory is mocked here with
  * the same shape the running stack returns; per-test overrides mock failure.
@@ -183,10 +183,10 @@ test("leads with a headline, the value proposition and the calls to action", asy
   await screen.findByRole("article", { name: "Faster-Whisper (local)" });
 });
 
-test("carries the Evidance brand and a tagline that says what it is", async () => {
+test("carries the STT Platform brand and a tagline that says what it is", async () => {
   renderLanding();
 
-  expect(screen.getByText("Evidance")).toBeInTheDocument();
+  expect(screen.getByText("STT Platform")).toBeInTheDocument();
   expect(
     screen.getByText(/provider-neutral speech-to-text platform/i),
   ).toBeInTheDocument();

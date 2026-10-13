@@ -1084,7 +1084,7 @@ has a report in [`docs/`](docs/) and the revamp ledger is
 - Rate limiting is in-process: replicas each enforce their own window.
 - Evaluation is only as strong as its references: one corpus clip is
   `pending-human-verification` and is therefore reported unscored
-  (currently 8 of 9 clips scored).
+  (currently 20 of 21 clips scored).
 - The architecture section deliberately contains two delivered diagrams and
   one *authored but not delivered* draft (failure-recovery workflow); the
   reason is stated on the section's page rather than hidden.

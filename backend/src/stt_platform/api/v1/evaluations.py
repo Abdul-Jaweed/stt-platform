@@ -36,6 +36,8 @@ from stt_platform.evaluation.platform import PlatformTranscriber
 from stt_platform.evaluation.runner import RUNNER_METRIC_SPECS, run_evaluation
 from stt_platform.persistence.evaluations import EvaluationRepository
 from stt_platform.schemas.evaluations import (
+    EvaluationDatasetInfo,
+    EvaluationDatasetList,
     EvaluationList,
     EvaluationRecord,
     EvaluationRequest,
@@ -157,6 +159,58 @@ def list_metric_explanations() -> MetricExplanationList:
     return MetricExplanationList(
         metrics=[MetricExplanation(**spec.describe()) for spec in specs]
     )
+
+
+@router.get("/datasets", response_model=EvaluationDatasetList)
+def list_datasets(request: Request) -> EvaluationDatasetList:
+    """Every dataset this deployment can run, with its readiness.
+
+    The corpus audio is generated (``scripts/make_eval_corpus.py``) and never
+    committed, so "the manifest exists" and "a run can start" are different
+    statements: each dataset is listed with its scored-clip count and whether
+    its scored audio is present. A manifest that cannot be loaded is still
+    listed, with ``load_error`` set — disappearing silently would hide it.
+    """
+    settings = request.app.state.settings
+    directory = settings.evaluation_datasets_dir
+    datasets: list[EvaluationDatasetInfo] = []
+    for dataset_id in available_datasets(directory=directory):
+        path = dataset_path(dataset_id, directory=directory)
+        try:
+            dataset = load_dataset(path, audio_root=settings.evaluation_audio_root)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            description = raw.get("description")
+            missing = dataset.missing_scored_audio()
+        except Exception as exc:  # a broken manifest is reported, not hidden
+            datasets.append(
+                EvaluationDatasetInfo(
+                    dataset_id=dataset_id,
+                    version="unknown",
+                    language="unknown",
+                    clips_total=0,
+                    clips_scored=0,
+                    clips_unscored=0,
+                    audio_ready=False,
+                    clips_missing_audio=0,
+                    load_error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+        scored = len(dataset.scored_clips())
+        datasets.append(
+            EvaluationDatasetInfo(
+                dataset_id=dataset.dataset_id,
+                version=dataset.version,
+                language=dataset.language,
+                description=description if isinstance(description, str) else None,
+                clips_total=len(dataset.clips),
+                clips_scored=scored,
+                clips_unscored=len(dataset.clips) - scored,
+                audio_ready=not missing,
+                clips_missing_audio=len(missing),
+            )
+        )
+    return EvaluationDatasetList(datasets=datasets)
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationRecord)

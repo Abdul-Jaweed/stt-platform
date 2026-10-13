@@ -86,6 +86,7 @@ PINNED_HTTP_PATHS = {
     "/v1/auth/logout",
     "/v1/auth/me",
     "/v1/evaluations",
+    "/v1/evaluations/datasets",
     "/v1/evaluations/metrics",
     "/v1/evaluations/{evaluation_id}",
     "/v1/evaluations/{evaluation_id}/artifact",

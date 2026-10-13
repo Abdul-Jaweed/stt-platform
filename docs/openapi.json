@@ -425,6 +425,93 @@
         "title": "EvaluationComparisonRow",
         "type": "object"
       },
+      "EvaluationDatasetInfo": {
+        "description": "One dataset manifest, as choosing an evaluation needs it.\n\n``audio_ready`` answers the question that actually matters: the corpus\naudio is generated (``scripts/make_eval_corpus.py``) and never committed,\nso \"the manifest exists\" and \"a run can start\" are different statements.\nA manifest that cannot be loaded is still listed, with ``load_error``\nset — disappearing silently would hide the problem.",
+        "properties": {
+          "audio_ready": {
+            "title": "Audio Ready",
+            "type": "boolean"
+          },
+          "clips_missing_audio": {
+            "title": "Clips Missing Audio",
+            "type": "integer"
+          },
+          "clips_scored": {
+            "title": "Clips Scored",
+            "type": "integer"
+          },
+          "clips_total": {
+            "title": "Clips Total",
+            "type": "integer"
+          },
+          "clips_unscored": {
+            "title": "Clips Unscored",
+            "type": "integer"
+          },
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "load_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Error"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "version",
+          "language",
+          "clips_total",
+          "clips_scored",
+          "clips_unscored",
+          "audio_ready",
+          "clips_missing_audio"
+        ],
+        "title": "EvaluationDatasetInfo",
+        "type": "object"
+      },
+      "EvaluationDatasetList": {
+        "properties": {
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDatasetInfo"
+            },
+            "title": "Datasets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "datasets"
+        ],
+        "title": "EvaluationDatasetList",
+        "type": "object"
+      },
       "EvaluationList": {
         "properties": {
           "count": {
@@ -1605,6 +1692,28 @@
           }
         },
         "summary": "Create Evaluation",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/v1/evaluations/datasets": {
+      "get": {
+        "description": "Every dataset this deployment can run, with its readiness.\n\nThe corpus audio is generated (``scripts/make_eval_corpus.py``) and never\ncommitted, so \"the manifest exists\" and \"a run can start\" are different\nstatements: each dataset is listed with its scored-clip count and whether\nits scored audio is present. A manifest that cannot be loaded is still\nlisted, with ``load_error`` set — disappearing silently would hide it.",
+        "operationId": "list_datasets_v1_evaluations_datasets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDatasetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Datasets",
         "tags": [
           "evaluations"
         ]

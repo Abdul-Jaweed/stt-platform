@@ -103,3 +103,29 @@ class MetricExplanation(BaseModel):
 
 class MetricExplanationList(BaseModel):
     metrics: list[MetricExplanation]
+
+
+class EvaluationDatasetInfo(BaseModel):
+    """One dataset manifest, as choosing an evaluation needs it.
+
+    ``audio_ready`` answers the question that actually matters: the corpus
+    audio is generated (``scripts/make_eval_corpus.py``) and never committed,
+    so "the manifest exists" and "a run can start" are different statements.
+    A manifest that cannot be loaded is still listed, with ``load_error``
+    set — disappearing silently would hide the problem.
+    """
+
+    dataset_id: str
+    version: str
+    language: str
+    description: str | None = None
+    clips_total: int
+    clips_scored: int
+    clips_unscored: int
+    audio_ready: bool
+    clips_missing_audio: int
+    load_error: str | None = None
+
+
+class EvaluationDatasetList(BaseModel):
+    datasets: list[EvaluationDatasetInfo]

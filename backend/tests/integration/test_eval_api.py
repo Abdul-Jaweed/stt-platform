@@ -329,3 +329,37 @@ def test_a_run_without_a_store_says_so_instead_of_inventing_an_artifact(make_cli
 
     assert response.status_code == 503, response.text
     assert "STORAGE_NOT_CONFIGURED" in response.text
+
+
+def test_the_datasets_endpoint_lists_what_can_run_with_its_readiness(make_client):
+    client = make_client()
+    response = client.get("/v1/evaluations/datasets")
+
+    assert response.status_code == 200, response.text
+    datasets = {item["dataset_id"]: item for item in response.json()["datasets"]}
+    assert "mini-eval" in datasets
+    info = datasets["mini-eval"]
+    assert info["version"] == "0.1.0"
+    assert info["language"] == "en"
+    assert info["clips_total"] == 2
+    assert info["clips_scored"] == 2
+    assert info["clips_unscored"] == 0
+    assert info["audio_ready"] is True
+    assert info["clips_missing_audio"] == 0
+    assert info["load_error"] is None
+
+
+def test_the_datasets_endpoint_reports_a_corpus_that_was_never_generated(
+    make_client, corpus
+):
+    for path in (corpus / "corpus").glob("*.wav"):
+        path.unlink()
+    client = make_client()
+    info = client.get("/v1/evaluations/datasets").json()["datasets"][0]
+    assert info["audio_ready"] is False
+    assert info["clips_missing_audio"] == 2
+
+
+def test_the_datasets_endpoint_needs_the_session_like_everything_else(make_client):
+    client = make_client(auth_enabled=True, api_keys="k1:local")
+    assert client.get("/v1/evaluations/datasets").status_code == 401

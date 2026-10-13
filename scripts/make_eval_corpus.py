@@ -81,10 +81,13 @@ def _ps_script(jobs: list[dict]) -> str:
     lines = [
         "Add-Type -AssemblyName System.Speech",
         "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer",
-        "$synth.Rate = 0",
     ]
     for job in jobs:
+        # Rate is re-emitted for every job (0 when the clip has no
+        # ``speech_rate``): a fast clip must not leak its rate into the
+        # next voice, or the corpus would drift from its manifest.
         lines += [
+            f"$synth.Rate = {int(job.get('rate') or 0)}",
             f"$synth.SelectVoice('{job['voice']}')",
             f"$synth.SetOutputToWaveFile('{job['out']}')",
             f"$synth.Speak('{job['text'].replace(chr(39), chr(39) * 2)}')",
@@ -161,6 +164,7 @@ def generate(*, check_only: bool) -> int:
                     "voice": voice,
                     "out": str(target.with_suffix(".raw.wav")),
                     "text": clip["reference_text"],
+                    "rate": clip.get("speech_rate"),
                 }
             )
             plan.append((clip, target, None))

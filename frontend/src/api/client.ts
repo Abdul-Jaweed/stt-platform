@@ -2,6 +2,7 @@ import { ApiError, normalizeError } from "./errors";
 import type {
   AuthConfig,
   EvaluationArtifact,
+  EvaluationDatasetList,
   EvaluationList,
   LivePreview,
   EvaluationRecord,
@@ -77,6 +78,7 @@ export interface ApiClient {
   /** Every metric's explanation, served from the code that computes it. */
   getEvaluationMetrics(): Promise<MetricExplanationList>;
   listEvaluations(): Promise<EvaluationList>;
+  listEvaluationDatasets(): Promise<EvaluationDatasetList>;
   createEvaluation(input: EvaluationRequest): Promise<EvaluationRecord>;
 }
 
@@ -209,6 +211,8 @@ export function createApiClient(baseUrl: string): ApiClient {
       get<MetricExplanationList>("/v1/evaluations/metrics"),
 
     listEvaluations: () => get<EvaluationList>("/v1/evaluations"),
+    listEvaluationDatasets: () =>
+      get<EvaluationDatasetList>("/v1/evaluations/datasets"),
 
     createEvaluation: (input) =>
       postJson<EvaluationRecord>("/v1/evaluations", input),

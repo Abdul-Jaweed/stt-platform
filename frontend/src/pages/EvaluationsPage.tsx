@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "../api/context";
 import { ApiError } from "../api/errors";
 import type {
+  EvaluationDatasetInfo,
   EvaluationArtifact,
   EvaluationComparisonRow,
   EvaluationRecord,
@@ -18,6 +19,7 @@ import type {
   ProviderInfo,
 } from "../api/types";
 import EvaluationRunDetail from "../components/EvaluationRunDetail";
+import WerTrend from "../components/WerTrend";
 
 /** How many runs the overview shows before it offers the rest. */
 const PAGE_SIZE = 8;
@@ -261,6 +263,8 @@ export default function EvaluationsPage() {
     message: string;
   } | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [datasets, setDatasets] = useState<EvaluationDatasetInfo[]>([]);
+  const [datasetsListFailed, setDatasetsListFailed] = useState(false);
   const [datasetId, setDatasetId] = useState("stt-eval-core");
   const [language, setLanguage] = useState("en");
   const [provider, setProvider] = useState("");
@@ -288,6 +292,7 @@ export default function EvaluationsPage() {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const inFlight = useRef(false);
   const datasetInput = useRef<HTMLInputElement | null>(null);
+  const datasetSelect = useRef<HTMLSelectElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -308,6 +313,19 @@ export default function EvaluationsPage() {
       .getProviders()
       .then(setProviders)
       .catch(() => setProviders([]));
+    // The dataset picker is a convenience, not a gate: a deployment that
+    // cannot list its datasets still lets you type an id below.
+    void api
+      .listEvaluationDatasets()
+      .then((list) => {
+        setDatasets(list.datasets);
+        setDatasetId((current) =>
+          list.datasets.some((item) => item.dataset_id === current)
+            ? current
+            : (list.datasets[0]?.dataset_id ?? current),
+        );
+      })
+      .catch(() => setDatasetsListFailed(true));
   }, [api, refresh]);
 
   // A run is synchronous and can take a while: show that it is alive rather
@@ -416,6 +434,9 @@ export default function EvaluationsPage() {
     );
   }
 
+  const selectedDataset =
+    datasets.find((item) => item.dataset_id === datasetId) ?? null;
+
   return (
     <section className="page evaluations-page">
       <div className="page-head">
@@ -434,17 +455,70 @@ export default function EvaluationsPage() {
 
       <Summary rows={rows} />
 
+      {rows.length > 0 && (
+        <section className="card" aria-labelledby="trend-heading">
+          <h3 id="trend-heading">WER trend</h3>
+          <WerTrend runs={rows} />
+        </section>
+      )}
+
       <section className="card" aria-labelledby="run-heading">
         <h3 id="run-heading">Run an evaluation</h3>
         <div className="run-form">
           <div className="field">
             <label htmlFor="dataset-id">Dataset</label>
-            <input
-              id="dataset-id"
-              ref={datasetInput}
-              value={datasetId}
-              onChange={(event) => setDatasetId(event.target.value)}
-            />
+            {datasets.length > 0 ? (
+              <select
+                id="dataset-id"
+                ref={datasetSelect}
+                value={datasetId}
+                onChange={(event) => setDatasetId(event.target.value)}
+              >
+                {datasets.map((item) => (
+                  <option
+                    key={item.dataset_id}
+                    value={item.dataset_id}
+                    disabled={Boolean(item.load_error)}
+                  >
+                    {item.dataset_id} (v{item.version} · {item.clips_scored}{" "}
+                    scored)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="dataset-id"
+                ref={datasetInput}
+                value={datasetId}
+                onChange={(event) => setDatasetId(event.target.value)}
+              />
+            )}
+            {selectedDataset && (
+              <p className="hint">
+                {selectedDataset.load_error
+                  ? `unreadable manifest — ${selectedDataset.load_error}`
+                  : `v${selectedDataset.version} · ${selectedDataset.clips_scored} scored of ${selectedDataset.clips_total} clips` +
+                    (selectedDataset.clips_unscored > 0
+                      ? ` · ${selectedDataset.clips_unscored} awaiting a reference`
+                      : "")}
+              </p>
+            )}
+            {selectedDataset &&
+              !selectedDataset.audio_ready &&
+              !selectedDataset.load_error && (
+                <p className="hint dataset-warning" role="status">
+                  <WarningCircle size={14} weight="fill" aria-hidden="true" />{" "}
+                  audio missing for {selectedDataset.clips_missing_audio}{" "}
+                  clip(s) — run scripts/make_eval_corpus.py
+                </p>
+              )}
+            {datasets.length === 0 && (
+              <p className="hint">
+                {datasetsListFailed
+                  ? "the dataset list could not be loaded — enter an id"
+                  : "no datasets are listed by this deployment — enter an id"}
+              </p>
+            )}
           </div>
           <div className="field">
             <label htmlFor="eval-language">Language</label>
@@ -538,7 +612,7 @@ export default function EvaluationsPage() {
             <button
               type="button"
               className="ghost"
-              onClick={() => datasetInput.current?.focus()}
+              onClick={() => (datasetSelect.current ?? datasetInput.current)?.focus()}
             >
               Run an evaluation
             </button>

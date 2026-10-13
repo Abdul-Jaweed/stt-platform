@@ -157,7 +157,10 @@ curl -s http://127.0.0.1:5000/health >/dev/null; echo $?   # 0 = up. Do NOT use 
 cd /i/voice-agent-course/local-stt
 cd backend && uv run python ../scripts/make_eval_corpus.py
 
-# 3. An evaluation, through the API
+# 3. What this deployment can actually run (data + audio readiness)
+curl -s http://127.0.0.1:8078/v1/evaluations/datasets
+
+# 4. An evaluation, through the API
 curl -s -X POST http://127.0.0.1:8078/v1/evaluations \
   -H 'Content-Type: application/json' \
   -d '{"dataset_id": "stt-eval-core", "language": "en"}' | head -40
@@ -167,23 +170,30 @@ Settings: `STT_EVALUATION_DATASETS_DIR`, `STT_EVALUATION_AUDIO_ROOT`,
 `STT_EVALUATION_MAX_CLIPS`, `STT_MLFLOW_ENABLED`, `STT_MLFLOW_TRACKING_URI`,
 `STT_MLFLOW_EXPERIMENT`, `STT_MLFLOW_TIMEOUT_S`.
 
-## 9. Measured baseline (this machine, 2026-10-11)
+## 9. Measured baseline (this machine, 2026-10-13, corpus 1.1.0)
 
-`large-v3-turbo` (CUDA), 8 scored clips, 59 s of audio:
+`large-v3-turbo` (CUDA), 20 scored clips, 127.2 s of audio:
 
 | Metric | Value |
 | --- | --- |
-| WER micro / macro | 0.100 / 0.118 |
-| CER micro | 0.095 |
-| RTF mean | 0.072 |
+| WER micro / macro | 0.124 / 0.147 |
+| CER micro | 0.108 |
+| RTF mean | 0.111 |
 | Segment / word availability | 1.0 / 1.0 |
 | Coverage | 0.825 |
-| Boundary error (mean) | 0.512 s |
+| Boundary error (mean) | 0.762 s |
 | Monotonicity violations / degenerate spans | 0 / 0 |
-| Failures | 0 / 8 |
+| Failures | 0 / 20 |
 
-By domain: conversational 0.00, technical 0.00, dates-and-names 0.25,
-numbers 0.69 (§3). By noise: clean 0.136, noisy 0.000.
+By domain: conversational 0.00, long-form 0.00, punctuation 0.00,
+technical 0.013, proper nouns 0.111, dates 0.148, tokens (letter/digit
+codes) 0.267, dates-and-names 0.25, numbers 0.60 (§3). By noise: clean
+0.105, noisy 0.211. By voice: US female 0.065, US male 0.226 — two SAPI
+voices, so this is a voice difference, not a map of accents.
+
+A baseline belongs to a corpus: these numbers replace the 0.100/8-clip
+figures measured against corpus 1.0.0, which the longer, harder 1.1.0 set
+is not comparable with.
 
 ## 10. Known limits
 

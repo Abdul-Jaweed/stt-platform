@@ -405,3 +405,20 @@ export interface LoginResponse {
   expires_at: number;
   token: string;
 }
+
+export interface EvaluationDatasetInfo {
+  dataset_id: string;
+  version: string;
+  language: string;
+  description: string | null;
+  clips_total: number;
+  clips_scored: number;
+  clips_unscored: number;
+  audio_ready: boolean;
+  clips_missing_audio: number;
+  load_error: string | null;
+}
+
+export interface EvaluationDatasetList {
+  datasets: EvaluationDatasetInfo[];
+}

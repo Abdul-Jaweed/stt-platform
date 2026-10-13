@@ -355,3 +355,34 @@ test("getEvaluationMetrics returns every explanation a metric carries", async ()
   expect(list.metrics[0].applies_to).toBe("run aggregate");
   expect(list.metrics[1].formula).toBe("mean(processing seconds / audio seconds), per clip");
 });
+
+test("lists the evaluation datasets with their readiness", async () => {
+  server.use(
+    http.get(`${BASE}/v1/evaluations/datasets`, () =>
+      HttpResponse.json({
+        datasets: [
+          {
+            dataset_id: "stt-eval-core",
+            version: "1.1.0",
+            language: "en",
+            description: "English evaluation corpus.",
+            clips_total: 21,
+            clips_scored: 20,
+            clips_unscored: 1,
+            audio_ready: true,
+            clips_missing_audio: 0,
+            load_error: null,
+          },
+        ],
+      }),
+    ),
+  );
+
+  const client = createApiClient(BASE);
+  const list = await client.listEvaluationDatasets();
+
+  expect(list.datasets).toHaveLength(1);
+  expect(list.datasets[0].dataset_id).toBe("stt-eval-core");
+  expect(list.datasets[0].clips_scored).toBe(20);
+  expect(list.datasets[0].audio_ready).toBe(true);
+});

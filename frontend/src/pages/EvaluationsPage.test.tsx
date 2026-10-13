@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 
@@ -828,4 +828,104 @@ test("the clip table of an open run searches, sorts and pages", async () => {
 
   await userEvent.click(screen.getByRole("button", { name: /next page/i }));
   expect(screen.getByTestId("clip-page")).toHaveTextContent("Page 2 of 2");
+});
+
+function datasetsHandler(datasets: unknown[]) {
+  return http.get(`${BASE}/v1/evaluations/datasets`, () =>
+    HttpResponse.json({ datasets }),
+  );
+}
+
+const datasetInfo = (overrides: Record<string, unknown> = {}) => ({
+  dataset_id: "stt-eval-core",
+  version: "1.1.0",
+  language: "en",
+  description: "English evaluation corpus.",
+  clips_total: 21,
+  clips_scored: 20,
+  clips_unscored: 1,
+  audio_ready: true,
+  clips_missing_audio: 0,
+  load_error: null,
+  ...overrides,
+});
+
+test("offers the datasets the deployment can run, with their readiness", async () => {
+  let posted: unknown = null;
+  server.use(
+    datasetsHandler([
+      datasetInfo(),
+      datasetInfo({
+        dataset_id: "mini-eval",
+        version: "0.1.0",
+        clips_total: 2,
+        clips_scored: 2,
+        clips_unscored: 0,
+        audio_ready: false,
+        clips_missing_audio: 2,
+      }),
+    ]),
+    listHandler([]),
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({ providers: [] }),
+    ),
+    http.post(`${BASE}/v1/evaluations`, async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json(
+        record({ dataset_id: "mini-eval", dataset_version: "0.1.0" }),
+        { status: 201 },
+      );
+    }),
+    http.get(`${BASE}/v1/evaluations/eval-1`, () => HttpResponse.json(record())),
+    artifactUnavailable("eval-1"),
+    metricsHandler([]),
+  );
+
+  renderPage();
+
+  const select = await screen.findByRole("combobox", { name: /dataset/i });
+  expect(select).toHaveValue("stt-eval-core");
+  // The chosen dataset states its size before anything runs.
+  expect(screen.getByText(/20 scored of 21 clips/i)).toBeInTheDocument();
+
+  await userEvent.selectOptions(select, "mini-eval");
+  expect(screen.getByText(/2 scored of 2 clips/i)).toBeInTheDocument();
+  // A corpus that was never generated is said now, not after a failed run.
+  expect(screen.getByText(/make_eval_corpus/)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /run evaluation/i }));
+  await waitFor(() =>
+    expect(posted).toMatchObject({ dataset_id: "mini-eval" }),
+  );
+});
+
+test("draws the WER trend of recent measured runs", async () => {
+  server.use(
+    listHandler(manyRows(4)),
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({ providers: [] }),
+    ),
+  );
+
+  renderPage();
+
+  const chart = await screen.findByRole("img", { name: /wer trend/i });
+  expect(chart.querySelectorAll("circle")).toHaveLength(4);
+  expect(chart.querySelector("polyline")).not.toBeNull();
+  expect(screen.getByText(/lower is better/i)).toBeInTheDocument();
+});
+
+test("one measured run is not a trend, and the page says why", async () => {
+  server.use(
+    listHandler([row({ evaluation_id: "eval-1", wer_micro: 0.1 })]),
+    http.get(`${BASE}/v1/providers`, () =>
+      HttpResponse.json({ providers: [] }),
+    ),
+  );
+
+  renderPage();
+
+  const note = await screen.findByTestId("wer-trend-note");
+  expect(note).toHaveTextContent(/two measured runs/i);
+  expect(screen.queryByRole("img", { name: /wer trend/i })).not.toBeInTheDocument();
 });

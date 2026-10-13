@@ -708,7 +708,10 @@ curl -s -X POST http://127.0.0.1:8200/v1/evaluations \
 The run is synchronous and returns its record (`201`): per-clip summaries,
 aggregates, normalization rules, and `insufficient_evidence` when the run
 cannot support a conclusion. Fetch the per-clip diff document separately
-with `GET /v1/evaluations/<evaluation_id>/artifact`.
+with `GET /v1/evaluations/<evaluation_id>/artifact`. A run needs its corpus generated on the machine
+running it, so `GET /v1/evaluations/datasets` first lists each dataset with
+its scored-clip count and whether the audio is present — a missing corpus is
+a clear instruction (`scripts/make_eval_corpus.py`), not a failed run.
 
 ## API
 
@@ -752,6 +755,7 @@ with `GET /v1/evaluations/<evaluation_id>/artifact`.
 | GET | `/v1/evaluations` | List evaluation runs |
 | POST | `/v1/evaluations` | Create and run an evaluation (synchronous) |
 | GET | `/v1/evaluations/metrics` | Metric explanations (formulas, direction, edge behaviour) |
+| GET | `/v1/evaluations/datasets` | Datasets this deployment can run, with scored-clip counts and audio readiness |
 | GET | `/v1/evaluations/{id}` | Evaluation record |
 | GET | `/v1/evaluations/{id}/artifact` | Per-clip diff document |
 

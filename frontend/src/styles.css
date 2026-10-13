@@ -2739,3 +2739,18 @@ tbody tr:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The WER trend: one line, recent runs, in the theme's accent. */
+.wer-trend {
+  margin: 0;
+}
+
+.wer-trend svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.wer-trend .hint {
+  margin-top: 6px;
+}
